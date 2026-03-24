@@ -43,13 +43,11 @@ curl -s -X POST http://localhost:8080/simulate \
   -H "Content-Type: application/json" \
   -d '{
     "RPS": 3.0,
-    "maxBatchSize": 48,
+    "maxConcurrency": 48,
     "avgInputTokens": 128,
     "avgOutputTokens": 512,
-    "alpha": 12,
-    "beta": 0.05,
-    "gamma": 0.0005,
-    "maxQueueSize": 128
+    "accelerator": "H100",
+    "model": "llama-3-8b"
   }'
 # → {"jobID":"<uuid>"}
 

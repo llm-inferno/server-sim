@@ -1,16 +1,16 @@
 package evaluator
 
 // ProblemData is the input to the evaluator /solve endpoint.
-// Schema matches queue-analysis ProblemData exactly.
+// It describes the workload and server identity. Evaluator-specific parameters
+// (e.g. Alpha/Beta/Gamma for the analytical model) are derived by the evaluator
+// from Accelerator and Model via its own configuration.
 type ProblemData struct {
 	RPS             float32 `json:"RPS"`             // request arrival rate (requests/sec)
-	MaxBatchSize    int     `json:"maxBatchSize"`    // maximum batch size
+	MaxConcurrency  int     `json:"maxConcurrency"`  // maximum concurrent requests in server
 	AvgInputTokens  float32 `json:"avgInputTokens"`  // average input tokens per request
 	AvgOutputTokens float32 `json:"avgOutputTokens"` // average output tokens per request
-	Alpha           float32 `json:"alpha"`           // base iteration time (ms)
-	Beta            float32 `json:"beta"`            // per-token prefill cost (ms/token)
-	Gamma           float32 `json:"gamma"`           // quadratic batch/token interaction (ms/token²)
-	MaxQueueSize    int     `json:"maxQueueSize"`    // maximum queue size
+	Accelerator     string  `json:"accelerator"`     // accelerator type (e.g. "H100", "A100")
+	Model           string  `json:"model"`           // LLM model name (e.g. "llama-3-8b")
 }
 
 // AnalysisData is the output from the evaluator /solve endpoint.

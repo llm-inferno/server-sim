@@ -48,7 +48,31 @@ Request:  ProblemData   (workload characteristics + model parameters)
 Response: AnalysisData  (performance metrics)
 ```
 
-The schema matches [queue-analysis](https://github.com/llm-inferno/queue-analysis) exactly, so queue-analysis works as a backend with no adapter. Other backends (DES, emulator) are wrapped as services implementing this same API.
+The `ProblemData` request is backend-agnostic: it carries workload characteristics (`RPS`, token counts) and server identity (`accelerator`, `model`). Evaluator-specific parameters (e.g. Alpha/Beta/Gamma for the analytical model) are resolved internally by the evaluator, never exposed to the consumer.
+
+### Evaluator Configuration
+
+Each evaluator backend loads a YAML config file at startup that maps `accelerator + model` pairs to its internal parameters. The config file path is passed via the `CONFIG_FILE` environment variable.
+
+Example for a queue-analysis evaluator:
+
+```yaml
+servers:
+  - accelerator: H100
+    model: llama-3-8b
+    alpha: 12.0
+    beta: 0.05
+    gamma: 0.0005
+    maxQueueSize: 128
+  - accelerator: A100
+    model: llama-3-8b
+    alpha: 15.0
+    beta: 0.06
+    gamma: 0.0006
+    maxQueueSize: 128
+```
+
+When a `/solve` request arrives, the evaluator looks up the entry matching the requested `accelerator` and `model`. If no entry is found, it returns `400 Bad Request`. A single evaluator instance can serve any number of accelerator/model combinations.
 
 ### Noise Injection
 
@@ -69,13 +93,11 @@ Submit a simulation job.
 | Field | Type | Description |
 |-------|------|-------------|
 | `RPS` | float32 | Request arrival rate (requests/sec) |
-| `maxBatchSize` | int | Maximum batch size |
+| `maxConcurrency` | int | Maximum concurrent requests in server |
 | `avgInputTokens` | float32 | Average input tokens per request |
 | `avgOutputTokens` | float32 | Average output tokens per request |
-| `alpha` | float32 | Base iteration time (ms) |
-| `beta` | float32 | Per-token prefill cost (ms/token) |
-| `gamma` | float32 | Quadratic batch/token interaction (ms/token²) |
-| `maxQueueSize` | int | Maximum queue size |
+| `accelerator` | string | Accelerator type (e.g. `"H100"`, `"A100"`) |
+| `model` | string | LLM model name (e.g. `"llama-3-8b"`) |
 
 **Response** `201 Created`:
 ```json
@@ -113,7 +135,7 @@ Liveness check. Returns `200 OK`.
 #### `POST /solve`
 Evaluate performance at a given workload.
 
-Request: `ProblemData` (same as above)
+Request: `ProblemData` (same as above). Evaluator-specific parameters (e.g. Alpha/Beta/Gamma for the analytical model) are derived internally by the evaluator from `accelerator` and `model` via a config file loaded at startup.
 
 **Response** `200 OK` (`AnalysisData`):
 
@@ -163,7 +185,7 @@ server-sim/
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Evaluator interface | REST API (`POST /solve`) | Backend-agnostic; queue-analysis works as-is; DES/emulator wrapped as services |
-| API schema | Match queue-analysis | No adapter needed for Phase 2 |
+| API schema | Accelerator + Model strings | Backend-agnostic; evaluators derive their own internal parameters via config |
 | Async API | Job-based (POST + poll) | Handles backends from milliseconds to minutes uniformly |
 | Noise injection | server-sim layer, not evaluator | Backends stay clean; noise is a consumer concern |
 | HTTP framework | Gin | Consistent with all llm-inferno repos |
