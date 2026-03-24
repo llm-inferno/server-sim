@@ -1,0 +1,38 @@
+{
+  "models": [
+    {
+      "accelerator": "H100",
+      "model": "ibm-granite/granite-3.1-8b-instruct",
+      "hfConfigPath": "hf-configs/ibm-granite/granite-3.1-8b-instruct/config.json",
+      "gpu": "H100",
+      "tp": 1,
+      "totalKVBlocks": 23257,
+      "blockSizeTokens": 16,
+      "maxRunningReqs": 256,
+      "maxScheduledTokens": 8192,
+      "maxModelLen": 0,
+      "scheduler": "fcfs",
+      "alphaCoeffs": [2247.789307383601, 4.366709277206167, 2026.846223138372],
+      "simulationHorizon": 60000000,
+      "numRequests": 0,
+      "seed": 42
+    },
+    {
+      "accelerator": "A100",
+      "model": "ibm-granite/granite-3.1-8b-instruct",
+      "hfConfigPath": "hf-configs/ibm-granite/granite-3.1-8b-instruct/config.json",
+      "gpu": "A100-80",
+      "tp": 1,
+      "totalKVBlocks": 23257,
+      "blockSizeTokens": 16,
+      "maxRunningReqs": 256,
+      "maxScheduledTokens": 8192,
+      "maxModelLen": 0,
+      "scheduler": "fcfs",
+      "alphaCoeffs": [5948.910386094121, 5.688978831542181, 16738.26113236831],
+      "simulationHorizon": 60000000,
+      "numRequests": 0,
+      "seed": 42
+    }
+  ]
+}

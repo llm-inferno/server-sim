@@ -16,7 +16,7 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 |-------|-----------|--------|
 | 1 | Dummy (hardcoded metrics) | Complete |
 | 2 | Analytical model (queue-analysis) | Complete |
-| 3 | DES (inference-sim/BLIS wrapper) | Planned |
+| 3 | DES (inference-sim/BLIS wrapper) | Complete |
 
 ---
 
@@ -28,7 +28,7 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 
 **Rationale:** Decouples server-sim from any specific evaluator implementation. Any backend (queue-analysis, DES, emulator) can be plugged in by wrapping it as a service implementing the same API. No Go import coupling between server-sim and the evaluator.
 
-**Implication:** inference-sim/BLIS will need a thin REST wrapper for Phase 3.
+**Phase 3 implementation:** `blis-evaluator/` imports `github.com/inference-sim/inference-sim` as a Go library and calls `cluster.NewClusterSimulator` / `cs.Run()` directly. Config (`blis-config.json`) maps `accelerator|model` → BLIS simulation parameters (KV blocks, batch limits, HF model config path, hardware GPU name, alpha coefficients). Latency backend selected globally via `LATENCY_BACKEND` env var (default: `roofline`).
 
 ---
 
@@ -121,6 +121,15 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 | `queue-analysis-evaluator/config.go` | JSON loader; builds `acc\|name` → `serverConfig` lookup map |
 | `queue-analysis-evaluator/handler.go` | `POST /solve` handler: lookup → `LLMQueueAnalyzer.Analyze()` → `AnalysisData` |
 
+### Phase 3
+
+| File | Purpose |
+|------|---------|
+| `blis-evaluator/main.go` | Entry point; loads blis-config.json, reads `LATENCY_BACKEND`, starts Gin server |
+| `blis-evaluator/config.go` | JSON loader; builds `accelerator\|model` → `modelEntry` lookup map with validation and defaults |
+| `blis-evaluator/handler.go` | `POST /solve` handler: lookup → `cluster.NewClusterSimulator().Run()` → `AnalysisData` |
+| `blis-evaluator/blis-config.json` | Sample config (two entries: H100 and A100 with granite-3.1-8b-instruct) |
+
 ---
 
 ## Configuration Reference
@@ -148,11 +157,19 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 | `DEFAULT_MAX_QUEUE_SIZE` | `128` | Default MaxQueueSize for all models |
 | `EVALUATOR_PORT` | `8081` | Listen port |
 
+### blis-evaluator
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BLIS_CONFIG_FILE` | `blis-config.json` | Path to blis-config.json |
+| `HW_CONFIG_FILE` | `hardware_config.json` | Path to inference-sim hardware_config.json |
+| `LATENCY_BACKEND` | `roofline` | Latency model: `roofline`, `blackbox`, `crossmodel`, `trained-roofline` |
+| `EVALUATOR_PORT` | `8081` | Listen port |
+
 ---
 
 ## Open Items / Future Work
 
-- **Phase 3:** Wrap inference-sim/BLIS as a REST service exposing `POST /solve` with the same schema.
 - **Kubernetes pod-label adapter:** A thin layer that reads workload from pod labels, calls `POST /simulate`, polls, and writes metrics back to labels.
 - **`MaxConcurrency` default from model-data:** Currently, if `MaxConcurrency` is 0 in the request, the evaluator falls back to `maxBatchSize` from `model-data.json`. This could be made more explicit.
 - **Overloaded RPS handling:** When RPS exceeds `maxRPS`, queue-analysis returns an error and the job shows `failed`. A possible improvement is to return the overloaded metrics anyway with a warning field, or to return `maxRPS` in the `AnalysisData` so the consumer can see the limit before submitting.

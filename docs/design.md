@@ -23,7 +23,7 @@ Consumer (REST client)
 |-------|-----------|-------------|
 | 1 | Dummy | Skeleton + hardcoded metrics. Validates the full async job flow. |
 | 2 | Analytical model | `queue-analysis-evaluator/` wraps [queue-analysis](https://github.com/llm-inferno/queue-analysis) as a Go library. Loads Alpha/Beta/Gamma from `model-data.json` (keyed by `acc`+`name`). MaxQueueSize defaults to 128 (`DEFAULT_MAX_QUEUE_SIZE`). Noise enabled via `NOISE_ENABLED=true`. |
-| 3 | DES | Wrap [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as evaluator service. |
+| 3 | DES | `blis-evaluator/` wraps [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as a Go library. Loads KV/batch/hardware params from `blis-config.json` (keyed by `accelerator`+`model`). Latency backend controlled by `LATENCY_BACKEND` (default: `roofline`). |
 
 ## Architecture
 
@@ -156,6 +156,15 @@ server-sim/
     server/server.go               # Gin REST server
   dummy-evaluator/
     main.go                        # Standalone dummy evaluator service
+  queue-analysis-evaluator/
+    main.go                        # Analytical model evaluator entry point
+    config.go                      # model-data.json loader
+    handler.go                     # POST /solve handler (queue-analysis library)
+  blis-evaluator/
+    main.go                        # DES evaluator entry point
+    config.go                      # blis-config.json loader
+    handler.go                     # POST /solve handler (inference-sim/BLIS library)
+    blis-config.json               # Sample config (accelerator+model → BLIS params)
   docs/
     design.md                      # This document
   Dockerfile

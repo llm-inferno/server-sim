@@ -4,7 +4,85 @@ LLM server performance simulator. Given workload characteristics, produces perfo
 
 See [docs/design.md](docs/design.md) for architecture and API reference.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    Consumer["Consumer\n(REST client)"]
+
+    subgraph ss["server-sim  :8080"]
+        API["POST /simulate\nGET  /simulate/:id\nGET  /health"]
+        Jobs[("Async Job Store\nin-memory")]
+        Noise["Noise Injection\nGaussian · optional"]
+        EvalClient["Evaluator HTTP Client\n10-min timeout"]
+    end
+
+    Evaluator["Evaluator Backend  :8081\nPOST /solve"]
+
+    Consumer -->|"POST /simulate → jobID"| API
+    Consumer -->|"GET /simulate/:id → status + metrics"| API
+    API -->|create job| Jobs
+    API -->|dispatch goroutine| EvalClient
+    EvalClient -->|ProblemData| Evaluator
+    Evaluator -->|AnalysisData| Noise
+    Noise -->|store result| Jobs
+```
+
+Three evaluator backends are available, each implementing the same `POST /solve` interface:
+
+| Phase | Evaluator | Approach |
+|-------|-----------|----------|
+| 1 | [Dummy](#phase-1-skeleton--dummy-evaluator) | Hardcoded metrics scaled by RPS |
+| 2 | [Queue-Analysis](#phase-2-queue-analysis-evaluator) | Analytical M/G/1 queue model |
+| 3 | [BLIS](#phase-3-blis-discrete-event-simulator-evaluator) | Discrete-event simulation |
+
+## Evaluator Interface
+
+All backends share the same REST contract:
+
+```mermaid
+flowchart LR
+    subgraph req["POST /solve  —  ProblemData"]
+        direction TB
+        r1["RPS · float32"]
+        r2["maxConcurrency · int"]
+        r3["avgInputTokens · float32"]
+        r4["avgOutputTokens · float32"]
+        r5["accelerator · string"]
+        r6["model · string"]
+    end
+
+    subgraph resp["200 OK  —  AnalysisData"]
+        direction TB
+        a1["throughput · float32  (req/s)"]
+        a2["avgRespTime · float32  (ms)"]
+        a3["avgWaitTime · float32  (ms)"]
+        a4["avgNumInServ · float32"]
+        a5["avgTTFT · float32  (ms)"]
+        a6["avgITL · float32  (ms)"]
+        a7["maxRPS · float32  (req/s)"]
+    end
+
+    req -->|"evaluator-specific\nparameters resolved\nfrom config file"| resp
+```
+
+Evaluator-specific parameters (latency coefficients, KV cache size, etc.) are never exposed in the request — each backend resolves them internally from its own config file keyed by `accelerator + model`.
+
+---
+
 ## Phase 1: Skeleton + Dummy Evaluator
+
+```mermaid
+flowchart LR
+    PD["ProblemData\n──────────\nRPS\naccelerator\nmodel\n…"]
+
+    subgraph dummy["dummy-evaluator"]
+        Logic["Hardcoded baseline metrics\nscaled proportionally by RPS\n(no config file)"]
+    end
+
+    PD -->|POST /solve| dummy
+    dummy --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgNumInServ\navgTTFT\navgITL\nmaxRPS"]
+```
 
 ### Prerequisites
 
@@ -85,7 +163,23 @@ docker run -p 8080:8080 -e EVALUATOR_URL=http://<evaluator-host>:8081 server-sim
 
 ## Phase 2: Queue-Analysis Evaluator
 
-Uses the [queue-analysis](https://github.com/llm-inferno/queue-analysis) analytical model. A YAML config file maps `accelerator + model` pairs to model parameters (Alpha, Beta, Gamma, MaxQueueSize).
+Uses the [queue-analysis](https://github.com/llm-inferno/queue-analysis) analytical model. A JSON config file maps `accelerator + model` pairs to model parameters (Alpha, Beta, Gamma, MaxQueueSize).
+
+```mermaid
+flowchart LR
+    PD["ProblemData\n──────────\nRPS\nmaxConcurrency\navgInputTokens\navgOutputTokens\naccelerator\nmodel"]
+
+    subgraph qa["queue-analysis-evaluator"]
+        Config["model-data.json\n──────────\nacc | model\n→ Alpha, Beta, Gamma\n   MaxBatchSize"]
+        Lookup["Lookup\nacc | model"]
+        Lib["queue-analysis library\nLLMQueueAnalyzer\n.Analyze(RPS)"]
+        Config --> Lookup
+    end
+
+    PD -->|POST /solve| Lookup
+    Lookup -->|"ServerConfig\n+ RequestSize"| Lib
+    Lib --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgNumInServ\navgTTFT\navgITL\nmaxRPS"]
+```
 
 ### Test Run
 
@@ -135,3 +229,139 @@ curl -s -X POST http://localhost:8080/simulate \
 | `MODEL_DATA_FILE` | `model-data.json` | Path to model-data.json |
 | `DEFAULT_MAX_QUEUE_SIZE` | `128` | Default max queue size for all models |
 | `EVALUATOR_PORT` | `8081` | Queue-analysis evaluator listen port |
+
+---
+
+## Phase 3: BLIS Discrete-Event Simulator Evaluator
+
+Uses [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as a discrete-event simulator backend. A JSON config file maps `accelerator + model` pairs to simulation parameters (KV cache, batch limits, hardware specs, HuggingFace model config).
+
+```mermaid
+flowchart TB
+    PD["ProblemData\n──────────\nRPS\nmaxConcurrency\navgInputTokens\navgOutputTokens\naccelerator · model"]
+
+    subgraph blis["blis-evaluator"]
+        direction TB
+        Config["blis-config.json\n──────────\nacc | model → KV blocks\n  batch limits · GPU · TP\n  scheduler · alphaCoeffs"]
+        HF["HuggingFace config.json\n──────────\nhidden_size · num_layers\nnum_kv_heads · torch_dtype\n…"]
+        HW["hardware_config.json\n──────────\nTFlopsPeak · BwPeakTBs\nmfuPrefill · mfuDecode\nMemoryGiB"]
+        Workload["WorkloadSpec\n──────────\nPoisson arrivals @ RPS\nExponential token lengths\n(mean = avgInput/OutputTokens)"]
+        Sim["BLIS ClusterSimulator\nDiscrete-Event Simulation\n──────────\nroofline latency model\nprefill + decode scheduling\nKV cache management"]
+        Metrics["sim.Metrics\n──────────\nRequestTTFTs · RequestE2Es\nAllITLs · SchedulingDelays\nNumRunningBatchRequests\nSimEndedTime"]
+
+        Config --> Sim
+        HF -->|"latency.GetModelConfig()"| Sim
+        HW -->|"latency.GetHWConfig()"| Sim
+        Workload -->|"workload.GenerateRequests()"| Sim
+        Sim -->|"cs.AggregatedMetrics()"| Metrics
+    end
+
+    PD -->|POST /solve| Config
+    PD -->|RPS + token means| Workload
+    Metrics --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgWaitTime · avgNumInServ\navgTTFT · avgITL · maxRPS"]
+```
+
+### Prerequisites
+
+- HuggingFace `config.json` for each model (see [Obtaining HuggingFace model configs](#obtaining-huggingface-model-configs))
+- `hardware_config.json` from the inference-sim repo (or your own copy)
+
+### Test Run
+
+**Step 1 — start the BLIS evaluator** (terminal 1):
+
+```bash
+cd blis-evaluator
+BLIS_CONFIG_FILE=blis-config.json \
+  HW_CONFIG_FILE=/path/to/inference-sim/hardware_config.json \
+  go run .
+# Listening on :8081
+```
+
+The `blis-config.json` maps accelerator+model pairs to BLIS simulation parameters. A sample config with two entries (H100 and A100 for `ibm-granite/granite-3.1-8b-instruct`) is included.
+
+**Step 2 — start server-sim** (terminal 2):
+
+```bash
+EVALUATOR_URL=http://localhost:8081 go run ./cmd/server-sim
+```
+
+**Step 3 — submit and poll** (terminal 3):
+
+```bash
+# Submit job (accelerator and model must match entries in blis-config.json)
+curl -s -X POST http://localhost:8080/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "RPS": 5.0,
+    "maxConcurrency": 0,
+    "avgInputTokens": 512,
+    "avgOutputTokens": 128,
+    "accelerator": "H100",
+    "model": "ibm-granite/granite-3.1-8b-instruct"
+  }'
+# → {"jobID":"<uuid>"}
+
+# Poll for result — DES runs take seconds; keep polling until status is completed
+curl -s http://localhost:8080/simulate/<uuid>
+# → {"status":"completed","result":{"throughput":5.0,"avgTTFT":45.2,"avgITL":12.1,...}}
+```
+
+> **Note:** DES simulations run for a configurable horizon (default 60 seconds of simulated time). The job will show `"status":"pending"` while the simulation is running. server-sim's HTTP client has a 10-minute timeout.
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BLIS_CONFIG_FILE` | `blis-config.json` | Path to blis-config.json |
+| `HW_CONFIG_FILE` | `hardware_config.json` | Path to inference-sim hardware_config.json |
+| `LATENCY_BACKEND` | `roofline` | Latency model: `roofline`, `blackbox`, `crossmodel`, `trained-roofline` |
+| `EVALUATOR_PORT` | `8081` | BLIS evaluator listen port |
+
+### blis-config.json schema
+
+Each entry in the `models` array configures one `accelerator + model` pair:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `accelerator` | ✓ | Accelerator name (matched against request) |
+| `model` | ✓ | Model name (matched against request) |
+| `hfConfigPath` | ✓ | Path to HuggingFace `config.json` for the model |
+| `gpu` | ✓ | GPU name matching `hardware_config.json` (e.g. `"H100"`, `"A100-80"`) |
+| `totalKVBlocks` | ✓ | Total GPU KV cache blocks |
+| `maxRunningReqs` | ✓ | Max concurrent requests in running batch |
+| `maxScheduledTokens` | ✓ | Max total new tokens across running batch |
+| `hwConfigPath` | | Per-entry hardware config path (overrides `HW_CONFIG_FILE`) |
+| `tp` | | Tensor parallelism degree (default: `1`) |
+| `blockSizeTokens` | | Tokens per KV block (default: `16`) |
+| `maxModelLen` | | Max sequence length, input+output (default: `0` = unlimited) |
+| `scheduler` | | Scheduling policy: `fcfs`, `sjf`, `priority-fcfs` (default: `fcfs`) |
+| `alphaCoeffs` | | Queueing time coefficients `[α₀, α₁, α₂]` in µs — calibrated values from inference-sim's `defaults.yaml` give accurate TTFT; defaults to `[0, 0, 0]` |
+| `simulationHorizon` | | Simulated time window in microseconds (default: `60000000` = 60s) |
+| `numRequests` | | Max requests to simulate, `0` = use horizon only (default: `0`) |
+| `seed` | | RNG seed for deterministic results (default: `42`) |
+
+### Obtaining HuggingFace model configs
+
+`config.json` files for public models can be downloaded directly from HuggingFace. The `hf-configs/` directory under `blis-evaluator/` is the recommended location:
+
+```bash
+# Public model (no auth required)
+mkdir -p blis-evaluator/hf-configs/<org>/<model-name>
+curl -L "https://huggingface.co/<org>/<model-name>/resolve/main/config.json" \
+  -o blis-evaluator/hf-configs/<org>/<model-name>/config.json
+
+# Example: granite-3.1-8b-instruct (already included in the sample config)
+mkdir -p blis-evaluator/hf-configs/ibm-granite/granite-3.1-8b-instruct
+curl -L "https://huggingface.co/ibm-granite/granite-3.1-8b-instruct/resolve/main/config.json" \
+  -o blis-evaluator/hf-configs/ibm-granite/granite-3.1-8b-instruct/config.json
+```
+
+For gated models (e.g. Llama), log in first:
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+huggingface-cli download meta-llama/Llama-3.1-8B config.json \
+  --local-dir blis-evaluator/hf-configs/meta-llama/Llama-3.1-8B
+```
