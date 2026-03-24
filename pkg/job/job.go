@@ -2,6 +2,7 @@ package job
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/llm-inferno/server-sim/pkg/evaluator"
@@ -18,21 +19,49 @@ const (
 
 // Job holds the state of a single simulation job.
 type Job struct {
-	ID     string
-	Status Status
-	Result *evaluator.AnalysisData
-	Error  string
+	ID          string
+	Status      Status
+	Result      *evaluator.AnalysisData
+	Error       string
+	completedAt time.Time // zero while pending
 }
 
 // Manager stores and manages simulation jobs in memory.
 type Manager struct {
 	mu   sync.RWMutex
 	jobs map[string]*Job
+	ttl  time.Duration
 }
 
-// NewManager creates a new job Manager.
-func NewManager() *Manager {
-	return &Manager{jobs: make(map[string]*Job)}
+// NewManager creates a new job Manager. Completed and failed jobs are evicted
+// after ttl. A sweep runs every ttl/2 (minimum 30s).
+func NewManager(ttl time.Duration) *Manager {
+	m := &Manager{jobs: make(map[string]*Job), ttl: ttl}
+	go m.sweepLoop()
+	return m
+}
+
+func (m *Manager) sweepLoop() {
+	interval := m.ttl / 2
+	if interval < 30*time.Second {
+		interval = 30 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.sweep()
+	}
+}
+
+func (m *Manager) sweep() {
+	cutoff := time.Now().Add(-m.ttl)
+	m.mu.Lock()
+	for id, j := range m.jobs {
+		if !j.completedAt.IsZero() && j.completedAt.Before(cutoff) {
+			delete(m.jobs, id)
+		}
+	}
+	m.mu.Unlock()
 }
 
 // Create registers a new pending job and returns its ID.
@@ -50,6 +79,7 @@ func (m *Manager) Complete(id string, result evaluator.AnalysisData) {
 	if j, ok := m.jobs[id]; ok {
 		j.Status = StatusCompleted
 		j.Result = &result
+		j.completedAt = time.Now()
 	}
 	m.mu.Unlock()
 }
@@ -60,6 +90,7 @@ func (m *Manager) Fail(id string, errMsg string) {
 	if j, ok := m.jobs[id]; ok {
 		j.Status = StatusFailed
 		j.Error = errMsg
+		j.completedAt = time.Now()
 	}
 	m.mu.Unlock()
 }

@@ -142,6 +142,7 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 | `EVALUATOR_URL` | `http://localhost:8081` | Evaluator backend URL |
 | `NOISE_ENABLED` | `false` | Enable Gaussian noise on metrics |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric value |
+| `JOB_TTL_MINUTES` | `60` | Minutes to retain completed/failed jobs before eviction |
 
 ### dummy-evaluator
 

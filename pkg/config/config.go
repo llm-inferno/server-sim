@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/llm-inferno/server-sim/pkg/noise"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	EvaluatorURL string
 	NoiseEnabled bool
 	Noise        noise.Config
+	JobTTL       time.Duration
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -22,6 +24,7 @@ func Load() Config {
 		EvaluatorURL: "http://localhost:8081",
 		NoiseEnabled: false,
 		Noise:        noise.Config{StdFraction: 0.05},
+		JobTTL:       60 * time.Minute,
 	}
 
 	if v := os.Getenv("SERVERSIM_PORT"); v != "" {
@@ -38,6 +41,11 @@ func Load() Config {
 	if v := os.Getenv("NOISE_STD_FRACTION"); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			cfg.Noise.StdFraction = f
+		}
+	}
+	if v := os.Getenv("JOB_TTL_MINUTES"); v != "" {
+		if m, err := strconv.Atoi(v); err == nil && m > 0 {
+			cfg.JobTTL = time.Duration(m) * time.Minute
 		}
 	}
 

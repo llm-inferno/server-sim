@@ -149,6 +149,7 @@ EVALUATOR_URL=http://localhost:8081 NOISE_ENABLED=true go run ./cmd/server-sim
 | `EVALUATOR_URL` | `http://localhost:8081` | Evaluator backend base URL |
 | `NOISE_ENABLED` | `false` | Add Gaussian noise to metrics |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric value |
+| `JOB_TTL_MINUTES` | `60` | Minutes to retain completed/failed jobs before eviction |
 | `DUMMY_EVALUATOR_PORT` | `8081` | Dummy evaluator listen port |
 
 ### Docker

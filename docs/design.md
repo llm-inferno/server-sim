@@ -139,6 +139,7 @@ server-sim is configured via environment variables:
 | `EVALUATOR_URL` | `http://localhost:8081` | Evaluator backend base URL |
 | `NOISE_ENABLED` | `false` | Enable Gaussian noise on metrics |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric value |
+| `JOB_TTL_MINUTES` | `60` | Minutes to retain completed/failed jobs before eviction |
 
 ## Repository Structure
 

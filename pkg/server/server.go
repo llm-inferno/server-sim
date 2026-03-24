@@ -25,7 +25,7 @@ func New(cfg config.Config) *Server {
 		router:  gin.Default(),
 		cfg:     cfg,
 		evalCli: evaluator.NewClient(cfg.EvaluatorURL),
-		jobs:    job.NewManager(),
+		jobs:    job.NewManager(cfg.JobTTL),
 	}
 	s.router.POST("/simulate", s.handleSimulate)
 	s.router.GET("/simulate/:id", s.handleGetJob)
