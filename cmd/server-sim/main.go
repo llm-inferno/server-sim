@@ -8,5 +8,7 @@ import (
 func main() {
 	cfg := config.Load()
 	srv := server.New(cfg)
-	srv.Run()
+	if err := srv.Run(); err != nil {
+		panic(err)
+	}
 }

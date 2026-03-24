@@ -34,8 +34,8 @@ func New(cfg config.Config) *Server {
 }
 
 // Run starts the HTTP server on the configured port.
-func (s *Server) Run() {
-	s.router.Run(fmt.Sprintf(":%d", s.cfg.Port))
+func (s *Server) Run() error {
+	return s.router.Run(fmt.Sprintf(":%d", s.cfg.Port))
 }
 
 // handleSimulate accepts a ProblemData, creates an async job, and returns the job ID.

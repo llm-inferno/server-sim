@@ -24,7 +24,9 @@ func main() {
 
 	r := gin.Default()
 	r.POST("/solve", handleSolve)
-	r.Run(fmt.Sprintf(":%d", port))
+	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
+		panic(err)
+	}
 }
 
 // handleSolve returns plausible hardcoded metrics scaled loosely by input RPS.

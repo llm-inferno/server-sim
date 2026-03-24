@@ -35,7 +35,7 @@ func (c *Client) Solve(pd ProblemData) (AnalysisData, error) {
 	if err != nil {
 		return AnalysisData{}, fmt.Errorf("POST /solve: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return AnalysisData{}, fmt.Errorf("evaluator returned status %d", resp.StatusCode)
