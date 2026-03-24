@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"os"
-	"sort"
 
 	"github.com/gin-gonic/gin"
 	blisSim "github.com/inference-sim/inference-sim/sim"
@@ -28,7 +27,7 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
-		key := pd.Accelerator + "|" + pd.Model
+		key := modelKey(pd.Accelerator, pd.Model)
 		entry, ok := lookup[key]
 		if !ok {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -37,14 +36,12 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
-		// Parse HuggingFace config.json to extract model parameters for the latency model.
 		modelConfig, err := latency.GetModelConfig(entry.HFConfigPath)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "load model config: " + err.Error()})
 			return
 		}
 
-		// Load hardware calibration data from per-entry path or global env var.
 		hwConfigFile := entry.HWConfigPath
 		if hwConfigFile == "" {
 			hwConfigFile = globalHWConfigFile
@@ -55,7 +52,6 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
-		// MaxConcurrency from the request overrides the config value when provided.
 		maxRunningReqs := entry.MaxRunningReqs
 		if pd.MaxConcurrency > 0 {
 			maxRunningReqs = int64(pd.MaxConcurrency)
@@ -123,6 +119,15 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 	}
 }
 
+// mapVals extracts the values from a map[string]T into a []float64 slice.
+func mapVals[T float64 | int64](m map[string]T) []float64 {
+	s := make([]float64, 0, len(m))
+	for _, v := range m {
+		s = append(s, float64(v))
+	}
+	return s
+}
+
 // extractMetrics computes AnalysisData directly from the aggregated *sim.Metrics,
 // replicating the calculations in sim.Metrics.SaveResults without writing to files.
 func extractMetrics(m *blisSim.Metrics) evaluator.AnalysisData {
@@ -132,33 +137,12 @@ func extractMetrics(m *blisSim.Metrics) evaluator.AnalysisData {
 		responsesPerSec = float64(m.CompletedRequests) / vllmRuntime
 	}
 
-	// Collect and sort per-request latencies (stored in µs) for mean calculation.
-	ttftVals := make([]float64, 0, len(m.RequestTTFTs))
-	for _, v := range m.RequestTTFTs {
-		ttftVals = append(ttftVals, v)
-	}
-	sort.Float64s(ttftVals)
-
-	e2eVals := make([]float64, 0, len(m.RequestE2Es))
-	for _, v := range m.RequestE2Es {
-		e2eVals = append(e2eVals, v)
-	}
-	sort.Float64s(e2eVals)
-
-	// Scheduling delay = time a request waits in the queue before entering service.
-	schedDelays := make([]float64, 0, len(m.RequestSchedulingDelays))
-	for _, v := range m.RequestSchedulingDelays {
-		schedDelays = append(schedDelays, float64(v))
-	}
-	sort.Float64s(schedDelays)
-
 	// CalculateMean divides by 1000 to convert µs → ms.
 	return evaluator.AnalysisData{
 		Throughput:   float32(responsesPerSec),
-		AvgRespTime:  float32(blisSim.CalculateMean(e2eVals)),
-		AvgWaitTime:  float32(blisSim.CalculateMean(schedDelays)),
-		AvgNumInServ: float32(blisSim.CalculateMean(m.NumRunningBatchRequests)),
-		AvgTTFT:      float32(blisSim.CalculateMean(ttftVals)),
+		AvgRespTime:  float32(blisSim.CalculateMean(mapVals(m.RequestE2Es))),
+		AvgWaitTime:  float32(blisSim.CalculateMean(mapVals(m.RequestSchedulingDelays))),
+		AvgTTFT:      float32(blisSim.CalculateMean(mapVals(m.RequestTTFTs))),
 		AvgITL:       float32(blisSim.CalculateMean(m.AllITLs)),
 		// MaxRPS: approximated as achieved throughput — the simulation runs at the
 		// requested RPS; if the system is stable, throughput ≈ max stable rate.

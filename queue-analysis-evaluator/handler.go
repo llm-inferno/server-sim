@@ -63,7 +63,6 @@ func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
 			Throughput:   metrics.Throughput,
 			AvgRespTime:  metrics.AvgRespTime,
 			AvgWaitTime:  metrics.AvgWaitTime,
-			AvgNumInServ: metrics.AvgNumInServ,
 			AvgTTFT:      metrics.AvgTTFT,
 			AvgITL:       metrics.AvgTokenTime, // AvgTokenTime == inter-token latency
 			MaxRPS:       metrics.MaxRate,

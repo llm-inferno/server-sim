@@ -36,6 +36,10 @@ type blisConfig struct {
 	Models []modelEntry `json:"models"`
 }
 
+func modelKey(accelerator, model string) string {
+	return accelerator + "|" + model
+}
+
 // loadConfig reads blis-config.json from the path given by BLIS_CONFIG_FILE
 // (defaulting to "blis-config.json") and returns a lookup map keyed by
 // "accelerator|model" for O(1) request-time access.
@@ -61,8 +65,7 @@ func loadConfig() (map[string]modelEntry, error) {
 			return nil, fmt.Errorf("invalid config entry for %s/%s: %w", m.Accelerator, m.Model, err)
 		}
 		applyDefaults(&m)
-		key := m.Accelerator + "|" + m.Model
-		lookup[key] = m
+		lookup[modelKey(m.Accelerator, m.Model)] = m
 	}
 	return lookup, nil
 }

@@ -57,7 +57,6 @@ flowchart LR
         a1["throughput · float32  (req/s)"]
         a2["avgRespTime · float32  (ms)"]
         a3["avgWaitTime · float32  (ms)"]
-        a4["avgNumInServ · float32"]
         a5["avgTTFT · float32  (ms)"]
         a6["avgITL · float32  (ms)"]
         a7["maxRPS · float32  (req/s)"]
@@ -81,7 +80,7 @@ flowchart LR
     end
 
     PD -->|POST /solve| dummy
-    dummy --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgNumInServ\navgTTFT\navgITL\nmaxRPS"]
+    dummy --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgTTFT\navgITL\nmaxRPS"]
 ```
 
 ### Prerequisites
@@ -178,7 +177,7 @@ flowchart LR
 
     PD -->|POST /solve| Lookup
     Lookup -->|"ServerConfig\n+ RequestSize"| Lib
-    Lib --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgNumInServ\navgTTFT\navgITL\nmaxRPS"]
+    Lib --> AD["AnalysisData\n──────────\nthroughput\navgRespTime\navgWaitTime\navgTTFT\navgITL\nmaxRPS"]
 ```
 
 ### Test Run
@@ -258,7 +257,7 @@ flowchart TB
 
     PD -->|POST /solve| Config
     PD -->|RPS + token means| Workload
-    Metrics --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgWaitTime · avgNumInServ\navgTTFT · avgITL · maxRPS"]
+    Metrics --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgWaitTime · avgTTFT\navgITL · maxRPS"]
 ```
 
 ### Prerequisites

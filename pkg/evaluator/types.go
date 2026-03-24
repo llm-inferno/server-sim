@@ -18,7 +18,6 @@ type AnalysisData struct {
 	Throughput   float32 `json:"throughput"`   // effective throughput (req/sec)
 	AvgRespTime  float32 `json:"avgRespTime"`  // average response time (ms)
 	AvgWaitTime  float32 `json:"avgWaitTime"`  // average queueing time (ms)
-	AvgNumInServ float32 `json:"avgNumInServ"` // average number of requests in system
 	AvgTTFT      float32 `json:"avgTTFT"`      // average time-to-first-token (ms)
 	AvgITL       float32 `json:"avgITL"`       // average inter-token latency (ms)
 	MaxRPS       float32 `json:"maxRPS"`       // maximum stable request rate (req/sec)

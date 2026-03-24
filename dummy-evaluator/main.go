@@ -45,7 +45,6 @@ func handleSolve(c *gin.Context) {
 		Throughput:   pd.RPS * 0.95,
 		AvgRespTime:  5000 * loadFactor,
 		AvgWaitTime:  20 * loadFactor,
-		AvgNumInServ: float32(pd.MaxConcurrency) * 0.6 * loadFactor,
 		AvgTTFT:      50 * loadFactor,
 		AvgITL:       15 * loadFactor,
 		MaxRPS:       float32(pd.MaxConcurrency) * 0.08,

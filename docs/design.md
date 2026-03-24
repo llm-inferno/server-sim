@@ -99,7 +99,6 @@ Poll for job result.
   "throughput": 3.0,
   "avgRespTime": 10568.4,
   "avgWaitTime": 28.3,
-  "avgNumInServ": 31.6,
   "avgTTFT": 75.3,
   "avgITL": 20.5,
   "maxRPS": 3.8
@@ -126,7 +125,6 @@ Request: `ProblemData` (same as above). Evaluator-specific parameters (e.g. Alph
 | `throughput` | float32 | Effective throughput (req/sec) |
 | `avgRespTime` | float32 | Average response time (ms) |
 | `avgWaitTime` | float32 | Average queueing time (ms) |
-| `avgNumInServ` | float32 | Average requests in system |
 | `avgTTFT` | float32 | Average time-to-first-token (ms) |
 | `avgITL` | float32 | Average inter-token latency (ms) |
 | `maxRPS` | float32 | Maximum stable request rate |

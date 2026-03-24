@@ -28,7 +28,6 @@ func AddNoise(ad evaluator.AnalysisData, cfg Config) evaluator.AnalysisData {
 		Throughput:   perturb(ad.Throughput),
 		AvgRespTime:  perturb(ad.AvgRespTime),
 		AvgWaitTime:  perturb(ad.AvgWaitTime),
-		AvgNumInServ: perturb(ad.AvgNumInServ),
 		AvgTTFT:      perturb(ad.AvgTTFT),
 		AvgITL:       perturb(ad.AvgITL),
 		MaxRPS:       perturb(ad.MaxRPS),
