@@ -1,0 +1,15 @@
+# Binaries
+/server-sim
+/dummy-evaluator-bin
+*.exe
+*.out
+
+# Go build cache
+/vendor/
+
+# Go test artifacts
+*.test
+*.prof
+
+# Environment files
+.env
