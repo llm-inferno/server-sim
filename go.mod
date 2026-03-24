@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
+	github.com/llm-inferno/queue-analysis v0.3.0
 )
 
 require (

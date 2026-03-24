@@ -22,7 +22,7 @@ Consumer (REST client)
 | Phase | Evaluator | Description |
 |-------|-----------|-------------|
 | 1 | Dummy | Skeleton + hardcoded metrics. Validates the full async job flow. |
-| 2 | Analytical model | Use [queue-analysis](https://github.com/llm-inferno/queue-analysis) as evaluator. Add Gaussian noise to mimic modeling error. |
+| 2 | Analytical model | `queue-analysis-evaluator/` wraps [queue-analysis](https://github.com/llm-inferno/queue-analysis) as a Go library. Loads Alpha/Beta/Gamma from `model-data.json` (keyed by `acc`+`name`). MaxQueueSize defaults to 128 (`DEFAULT_MAX_QUEUE_SIZE`). Noise enabled via `NOISE_ENABLED=true`. |
 | 3 | DES | Wrap [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as evaluator service. |
 
 ## Architecture
@@ -52,25 +52,7 @@ The `ProblemData` request is backend-agnostic: it carries workload characteristi
 
 ### Evaluator Configuration
 
-Each evaluator backend loads a YAML config file at startup that maps `accelerator + model` pairs to its internal parameters. The config file path is passed via the `CONFIG_FILE` environment variable.
-
-Example for a queue-analysis evaluator:
-
-```yaml
-servers:
-  - accelerator: H100
-    model: llama-3-8b
-    alpha: 12.0
-    beta: 0.05
-    gamma: 0.0005
-    maxQueueSize: 128
-  - accelerator: A100
-    model: llama-3-8b
-    alpha: 15.0
-    beta: 0.06
-    gamma: 0.0006
-    maxQueueSize: 128
-```
+Each evaluator backend loads its configuration at startup. The queue-analysis evaluator reads a `model-data.json` file (path via `MODEL_DATA_FILE` env var) containing Alpha/Beta/Gamma parameters keyed by `acc` (accelerator) and `name` (model). This is the same format used across the llm-inferno ecosystem (see [sample-data](https://github.com/llm-inferno/sample-data)).
 
 When a `/solve` request arrives, the evaluator looks up the entry matching the requested `accelerator` and `model`. If no entry is found, it returns `400 Bad Request`. A single evaluator instance can serve any number of accelerator/model combinations.
 
