@@ -12,6 +12,7 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
+      "betaCoeffs": [],
       "alphaCoeffs": [2247.789307383601, 4.366709277206167, 2026.846223138372],
       "simulationHorizon": 60000000,
       "numRequests": 0,

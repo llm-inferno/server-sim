@@ -25,6 +25,7 @@ type modelEntry struct {
 	MaxScheduledTokens int64     `json:"maxScheduledTokens"` // max total new tokens across running batch
 	MaxModelLen        int64     `json:"maxModelLen"`        // max sequence length (0 = unlimited)
 	Scheduler          string    `json:"scheduler"`          // "fcfs" (default), "sjf", "priority-fcfs"
+	BetaCoeffs         []float64 `json:"betaCoeffs"`         // step-time regression coefficients (blackbox: ≥3, crossmodel: ≥4, trained-roofline: ≥7)
 	AlphaCoeffs        []float64 `json:"alphaCoeffs"`        // queueing time regression coefficients [α₀, α₁, α₂] (µs)
 	SimulationHorizon  int64     `json:"simulationHorizon"`  // sim duration in microseconds (default 60s)
 	NumRequests        int64     `json:"numRequests"`        // max requests to simulate (0 = use horizon only)

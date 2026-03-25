@@ -66,7 +66,7 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			),
 			BatchConfig: blisSim.NewBatchConfig(maxRunningReqs, entry.MaxScheduledTokens, 0),
 			LatencyCoeffs: blisSim.NewLatencyCoeffs(
-				nil, // BetaCoeffs not used by roofline
+				entry.BetaCoeffs,
 				entry.AlphaCoeffs,
 			),
 			ModelHardwareConfig: blisSim.NewModelHardwareConfig(

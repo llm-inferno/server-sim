@@ -336,6 +336,7 @@ Each entry in the `models` array configures one `accelerator + model` pair:
 | `blockSizeTokens` | | Tokens per KV block (default: `16`) |
 | `maxModelLen` | | Max sequence length, input+output (default: `0` = unlimited) |
 | `scheduler` | | Scheduling policy: `fcfs`, `sjf`, `priority-fcfs` (default: `fcfs`) |
+| `betaCoeffs` | | Step-time regression coefficients required by non-roofline backends: ≥3 for `blackbox`, ≥4 for `crossmodel`, ≥7 for `trained-roofline`; unused by `roofline` (default: `[]`) |
 | `alphaCoeffs` | | Queueing time coefficients `[α₀, α₁, α₂]` in µs — calibrated values from inference-sim's `defaults.yaml` give accurate TTFT; defaults to `[0, 0, 0]` |
 | `simulationHorizon` | | Simulated time window in microseconds (default: `60000000` = 60s) |
 | `numRequests` | | Max requests to simulate, `0` = use horizon only (default: `0`) |
