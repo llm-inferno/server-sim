@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: server-sim-blis
+  labels:
+    app: server-sim
+    evaluator: blis
+spec:
+  initContainers:
+    # Optional: use an init container to download runtime data files (HF configs,
+    # hardware_config.json) into the shared volume before the evaluator starts.
+    # Remove this section if you supply the files via a pre-populated PVC instead.
+    - name: fetch-configs
+      image: busybox
+      command: ["/bin/sh", "-c", "echo 'Download config files here and place under /config'"]
+      volumeMounts:
+        - name: evaluator-config
+          mountPath: /config
+  containers:
+    - name: server-sim
+      image: server-sim:latest
+      ports:
+        - containerPort: 8080
+      env:
+        - name: EVALUATOR_URL
+          value: "http://localhost:8081"
+        - name: NOISE_ENABLED
+          value: "false"
+
+    - name: evaluator
+      image: evaluator:latest
+      args: ["blis"]
+      ports:
+        - containerPort: 8081
+      env:
+        - name: EVALUATOR_PORT
+          value: "8081"
+        - name: BLIS_CONFIG_FILE
+          value: "/app/config/blis-config.json"
+        - name: HW_CONFIG_FILE
+          value: "/app/config/hardware_config.json"
+        - name: LATENCY_BACKEND
+          value: "roofline"
+      volumeMounts:
+        - name: evaluator-config
+          mountPath: /app/config
+
+  volumes:
+    - name: evaluator-config
+      configMap:
+        name: blis-config

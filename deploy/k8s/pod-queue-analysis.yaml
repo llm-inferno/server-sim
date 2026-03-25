@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: server-sim-queue-analysis
+  labels:
+    app: server-sim
+    evaluator: queue-analysis
+spec:
+  containers:
+    - name: server-sim
+      image: server-sim:latest
+      ports:
+        - containerPort: 8080
+      env:
+        - name: EVALUATOR_URL
+          value: "http://localhost:8081"
+        - name: NOISE_ENABLED
+          value: "false"
+
+    - name: evaluator
+      image: evaluator:latest
+      args: ["queue-analysis"]
+      ports:
+        - containerPort: 8081
+      env:
+        - name: EVALUATOR_PORT
+          value: "8081"
+        - name: MODEL_DATA_FILE
+          value: "/app/config/model-data.json"
+      volumeMounts:
+        - name: evaluator-config
+          mountPath: /app/config
+
+  volumes:
+    - name: evaluator-config
+      configMap:
+        name: queue-analysis-config

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blis-config
+data:
+  # blis-config.json: paste the contents of blis-evaluator/blis-config.json here.
+  # hfConfigPath values inside must reference /app/config/hf-configs/... paths
+  # so that the mounted files are found at runtime.
+  blis-config.json: |
+    {
+      "models": []
+    }
+
+  # hardware_config.json: paste the contents of the inference-sim hardware_config.json here.
+  hardware_config.json: |
+    {}
+
+  # HuggingFace model config files are referenced by hfConfigPath in blis-config.json.
+  # Add additional keys for each model, e.g.:
+  #   hf-configs/ibm-granite/granite-3.1-8b-instruct/config.json: |
+  #     { ... }

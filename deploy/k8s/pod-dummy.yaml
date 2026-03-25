@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: server-sim-dummy
+  labels:
+    app: server-sim
+    evaluator: dummy
+spec:
+  containers:
+    - name: server-sim
+      image: server-sim:latest
+      ports:
+        - containerPort: 8080
+      env:
+        - name: EVALUATOR_URL
+          value: "http://localhost:8081"
+        - name: NOISE_ENABLED
+          value: "false"
+
+    - name: evaluator
+      image: evaluator:latest
+      args: ["dummy"]
+      ports:
+        - containerPort: 8081
+      env:
+        - name: EVALUATOR_PORT
+          value: "8081"

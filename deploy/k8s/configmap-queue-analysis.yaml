@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: queue-analysis-config
+data:
+  # model-data.json: paste the contents of your model-data.json here.
+  # See https://github.com/llm-inferno/sample-data for the format.
+  model-data.json: |
+    {
+      "models": []
+    }
