@@ -150,7 +150,6 @@ EVALUATOR_URL=http://localhost:8081 NOISE_ENABLED=true go run ./cmd/server-sim
 | `NOISE_ENABLED` | `false` | Add Gaussian noise to metrics |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric value |
 | `JOB_TTL_MINUTES` | `60` | Minutes to retain completed/failed jobs before eviction |
-| `DUMMY_EVALUATOR_PORT` | `8081` | Dummy evaluator listen port |
 
 ### Docker
 
@@ -163,7 +162,7 @@ docker run -p 8080:8080 -e EVALUATOR_URL=http://<evaluator-host>:8081 server-sim
 
 ## Phase 2: Queue-Analysis Evaluator
 
-Uses the [queue-analysis](https://github.com/llm-inferno/queue-analysis) analytical model. A JSON config file maps `accelerator + model` pairs to model parameters (Alpha, Beta, Gamma, MaxQueueSize).
+Uses the [queue-analysis](https://github.com/llm-inferno/queue-analysis) analytical model. A JSON config file maps `accelerator + model` pairs to model parameters (Alpha, Beta, Gamma). MaxQueueSize is applied uniformly across all models via the `DEFAULT_MAX_QUEUE_SIZE` environment variable.
 
 ```mermaid
 flowchart LR
@@ -209,7 +208,7 @@ curl -s -X POST http://localhost:8080/simulate \
 
 # Poll for result
 curl -s http://localhost:8080/simulate/<uuid>
-# → {"status":"completed","result":{"avgTTFT":120.0,"avgITL":54.9,"maxRPS":1.31,...}}
+# → {"jobID":"<uuid>","status":"completed","result":{"avgTTFT":120.0,"avgITL":54.9,"maxRPS":1.31,...}}
 ```
 
 Note: if RPS exceeds the model's maximum stable rate (`maxRPS`), the job will show `"status":"failed"`.
@@ -278,7 +277,7 @@ BLIS_CONFIG_FILE=blis-config.json \
 # Listening on :8081
 ```
 
-The `blis-config.json` maps accelerator+model pairs to BLIS simulation parameters. A sample config with two entries (H100 and A100 for `ibm-granite/granite-3.1-8b-instruct`) is included.
+The `blis-config.json` maps accelerator+model pairs to BLIS simulation parameters. A sample config with 10 entries is included (H100 and A100 for `ibm-granite/granite-3.1-8b-instruct`, `ibm-granite/granite-34b-code-instruct-8k`, `meta-llama/Llama-2-13b-hf`, `meta-llama/Llama-2-70b-hf`, and `mistralai/Mixtral-8x7B-v0.1`). The corresponding HuggingFace `config.json` files are included in `hf-configs/`.
 
 **Step 2 — start server-sim** (terminal 2):
 
@@ -344,25 +343,21 @@ Each entry in the `models` array configures one `accelerator + model` pair:
 
 ### Obtaining HuggingFace model configs
 
-`config.json` files for public models can be downloaded directly from HuggingFace. The `hf-configs/` directory under `blis-evaluator/` is the recommended location:
+HuggingFace `config.json` files for the bundled models are already checked in under `blis-evaluator/hf-configs/`. To add a new model, place its `config.json` in `blis-evaluator/hf-configs/<org>/<model-name>/` and add a corresponding entry to `blis-config.json`.
+
+For public models (no auth required):
 
 ```bash
-# Public model (no auth required)
 mkdir -p blis-evaluator/hf-configs/<org>/<model-name>
 curl -L "https://huggingface.co/<org>/<model-name>/resolve/main/config.json" \
   -o blis-evaluator/hf-configs/<org>/<model-name>/config.json
-
-# Example: granite-3.1-8b-instruct (already included in the sample config)
-mkdir -p blis-evaluator/hf-configs/ibm-granite/granite-3.1-8b-instruct
-curl -L "https://huggingface.co/ibm-granite/granite-3.1-8b-instruct/resolve/main/config.json" \
-  -o blis-evaluator/hf-configs/ibm-granite/granite-3.1-8b-instruct/config.json
 ```
 
-For gated models (e.g. Llama), log in first:
+For gated models (e.g. Llama):
 
 ```bash
 pip install huggingface_hub
 huggingface-cli login
-huggingface-cli download meta-llama/Llama-3.1-8B config.json \
-  --local-dir blis-evaluator/hf-configs/meta-llama/Llama-3.1-8B
+huggingface-cli download <org>/<model-name> config.json \
+  --local-dir blis-evaluator/hf-configs/<org>/<model-name>
 ```

@@ -27,7 +27,7 @@ func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
 			return
 		}
 
-		// MaxConcurrency from request overrides the model-data default when provided.
+		// Use pd.MaxConcurrency as the primary source; fall back to sc.MaxBatchSize if absent or invalid.
 		maxBatchSize := sc.MaxBatchSize
 		if pd.MaxConcurrency > 0 {
 			maxBatchSize = pd.MaxConcurrency

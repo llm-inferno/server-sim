@@ -19,5 +19,3 @@
 .DS_Store
 ~*
 
-# Downloaded HuggingFace model configs (fetch with curl — see README)
-blis-evaluator/hf-configs/

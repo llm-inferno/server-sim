@@ -58,7 +58,7 @@ When a `/solve` request arrives, the evaluator looks up the entry matching the r
 
 ### Noise Injection
 
-For analytical model backends, server-sim applies Gaussian noise to each returned metric. This mimics realistic disturbances and modeling error. Noise is:
+server-sim applies Gaussian noise to each metric returned by the evaluator. This mimics realistic disturbances and modeling error. Noise is:
 - Configured per metric as a fraction (standard deviation / mean)
 - Disabled by default; enabled via `NOISE_ENABLED=true`
 - Applied after the evaluator responds, before the job result is stored
@@ -74,7 +74,7 @@ Submit a simulation job.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `RPS` | float32 | Request arrival rate (requests/sec) |
+| `RPS` | float32 | Offered load: arrival rate of requests to the server (requests/sec) |
 | `maxConcurrency` | int | Maximum concurrent requests in server |
 | `avgInputTokens` | float32 | Average input tokens per request |
 | `avgOutputTokens` | float32 | Average output tokens per request |
@@ -122,7 +122,7 @@ Request: `ProblemData` (same as above). Evaluator-specific parameters (e.g. Alph
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `throughput` | float32 | Effective throughput (req/sec) |
+| `throughput` | float32 | Goodput: departure rate of successfully completed requests (req/sec); `throughput ≤ RPS`, with the difference representing dropped/rejected requests |
 | `avgRespTime` | float32 | Average response time (ms) |
 | `avgWaitTime` | float32 | Average queueing time (ms) |
 | `avgTTFT` | float32 | Average time-to-first-token (ms) |
