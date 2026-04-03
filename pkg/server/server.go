@@ -56,6 +56,9 @@ func (s *Server) handleSimulate(c *gin.Context) {
 		}
 		if s.cfg.NoiseEnabled {
 			result = noise.AddNoise(result, s.cfg.Noise)
+			if result.Throughput > pd.RPS {
+				result.Throughput = pd.RPS
+			}
 		}
 		s.jobs.Complete(id, result)
 	}()

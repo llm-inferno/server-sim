@@ -60,12 +60,12 @@ func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
 		}
 
 		ad := evaluator.AnalysisData{
-			Throughput:   metrics.Throughput,
-			AvgRespTime:  metrics.AvgRespTime,
-			AvgWaitTime:  metrics.AvgWaitTime,
-			AvgTTFT:      metrics.AvgTTFT,
-			AvgITL:       metrics.AvgTokenTime, // AvgTokenTime == inter-token latency
-			MaxRPS:       metrics.MaxRate,
+			Throughput:  metrics.Throughput,
+			AvgRespTime: metrics.AvgRespTime,
+			AvgWaitTime: metrics.AvgWaitTime,
+			AvgTTFT:     metrics.AvgTTFT,
+			AvgITL:      metrics.AvgTokenTime, // AvgTokenTime == inter-token latency
+			MaxRPS:      metrics.MaxRate,
 		}
 		c.IndentedJSON(http.StatusOK, ad)
 	}
