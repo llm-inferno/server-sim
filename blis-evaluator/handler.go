@@ -144,8 +144,10 @@ func extractMetrics(m *blisSim.Metrics) evaluator.AnalysisData {
 		AvgWaitTime:  float32(blisSim.CalculateMean(mapVals(m.RequestSchedulingDelays))),
 		AvgTTFT:      float32(blisSim.CalculateMean(mapVals(m.RequestTTFTs))),
 		AvgITL:       float32(blisSim.CalculateMean(m.AllITLs)),
-		// MaxRPS: approximated as achieved throughput — the simulation runs at the
-		// requested RPS; if the system is stable, throughput ≈ max stable rate.
-		MaxRPS: float32(responsesPerSec),
+		// MaxRPS: not applicable for DES simulation. Unlike the queue-analysis
+		// evaluator (which returns an analytical MaxRate), blis runs at the requested
+		// RPS and does not compute a capacity limit. Return 0 so the Collector's
+		// overload re-simulation check (guarded by MaxRPS > 0) is skipped.
+		MaxRPS: 0,
 	}
 }
