@@ -306,7 +306,7 @@ curl -s http://localhost:8080/simulate/<uuid>
 # → {"status":"completed","result":{"throughput":5.0,"avgTTFT":45.2,"avgITL":12.1,...}}
 ```
 
-> **Note:** DES simulations run for a configurable horizon (default 60 seconds of simulated time). The job will show `"status":"pending"` while the simulation is running. server-sim's HTTP client has a 10-minute timeout.
+> **Note:** DES simulations run for a configurable horizon (default 300 seconds of simulated time). The job will show `"status":"pending"` while the simulation is running. server-sim's HTTP client has a 10-minute wall-clock timeout.
 
 ### Configuration
 
@@ -337,7 +337,7 @@ Each entry in the `models` array configures one `accelerator + model` pair:
 | `scheduler` | | Scheduling policy: `fcfs`, `sjf`, `priority-fcfs` (default: `fcfs`) |
 | `betaCoeffs` | | Step-time regression coefficients required by non-roofline backends: ≥3 for `blackbox`, ≥4 for `crossmodel`, ≥7 for `trained-roofline` or `trained-physics`; unused by `roofline` (default: `[]`) |
 | `alphaCoeffs` | | Queueing time coefficients `[α₀, α₁, α₂]` in µs — calibrated values from inference-sim's `defaults.yaml` give accurate TTFT; defaults to `[0, 0, 0]` |
-| `simulationHorizon` | | Simulated time window in microseconds (default: `60000000` = 60s) |
+| `simulationHorizon` | | Simulated time window in microseconds (default: `300000000` = 300s). Longer horizons reduce cold-start bias in throughput: the DES starts with an empty system, so a short horizon inflates the ramp-up fraction. Per-entry override is the escape valve if a specific model/RPS combination takes too long to simulate. |
 | `numRequests` | | Max requests to simulate, `0` = use horizon only (default: `0`) |
 | `seed` | | RNG seed for deterministic results (default: `42`) |
 

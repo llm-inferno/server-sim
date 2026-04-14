@@ -53,7 +53,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 
 - `throughput ≤ RPS` — server-sim clamps noisy throughput to RPS to preserve this.
 - `maxRPS = 0` from an evaluator means the evaluator is overloaded; server-sim skips noise injection and propagates the failure.
-- The evaluator HTTP client has a 10-minute timeout (DES runs can be slow).
+- The evaluator HTTP client has a 10-minute wall-clock timeout (DES runs can be slow). The BLIS default simulation horizon is 300 s of *simulated* time — a longer horizon reduces cold-start throughput bias but increases wall-clock runtime; tune `simulationHorizon` in `blis-config.json` per entry if needed.
 
 ## Configuration
 
