@@ -12,24 +12,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -45,26 +30,11 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
-      "seed": 42,
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ]
+      "seed": 42
     },
     {
       "accelerator": "H100",
@@ -78,24 +48,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -111,24 +66,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -144,24 +84,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -177,24 +102,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -210,24 +120,9 @@
       "maxScheduledTokens": 4096,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -243,24 +138,9 @@
       "maxScheduledTokens": 4096,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -276,24 +156,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     },
@@ -309,24 +174,9 @@
       "maxScheduledTokens": 8192,
       "maxModelLen": 0,
       "scheduler": "fcfs",
-      "betaCoeffs": [
-        0.15,
-        0.0,
-        1.4,
-        0.75,
-        32.0,
-        4.0,
-        126.0,
-        482.0,
-        0.0,
-        1.9
-      ],
-      "alphaCoeffs": [
-        15563.0,
-        777.0,
-        46.0
-      ],
-      "simulationHorizon": 60000000,
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
       "numRequests": 0,
       "seed": 42
     }

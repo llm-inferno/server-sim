@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-const defaultSimulationHorizon = int64(60_000_000) // 60 seconds in microseconds
+const defaultSimulationHorizon = int64(300_000_000) // 300 seconds (5 min) in microseconds
 const defaultBlockSizeTokens = int64(16)
 const defaultSeed = int64(42)
 
