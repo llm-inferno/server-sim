@@ -8,6 +8,10 @@ import (
 	"github.com/llm-inferno/server-sim/pkg/evaluator"
 )
 
+// saturationMargin is the fraction of MaxRate at which the system is considered
+// saturated. A 2% headroom accounts for model approximation errors.
+const saturationMargin = 0.98
+
 // solveHandler returns a Gin handler that resolves accelerator+model to
 // queue-analysis parameters, runs the analytical model, and returns metrics.
 func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
@@ -67,6 +71,14 @@ func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
 			AvgITL:      metrics.AvgTokenTime, // AvgTokenTime == inter-token latency
 			MaxRPS:      metrics.MaxRate,
 		}
+
+		// Saturation check: offered rate exceeds maximum stable rate (with 2% margin).
+		// Metrics are left populated — they reflect degraded-state behaviour under
+		// overload. Consumers MUST check Saturation before treating them as reliable.
+		if metrics.MaxRate > 0 && float64(pd.RPS) > float64(metrics.MaxRate)*saturationMargin {
+			ad.Saturation = evaluator.SaturationOverload
+		}
+
 		c.IndentedJSON(http.StatusOK, ad)
 	}
 }
