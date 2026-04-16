@@ -46,13 +46,15 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 | Directory | Approach |
 |-----------|----------|
 | `dummy-evaluator/` | Hardcoded metrics scaled by RPS — no config needed |
-| `queue-analysis-evaluator/` | Analytical M/G/1 model via `llm-inferno/queue-analysis`; loads Alpha/Beta/Gamma from `model-data.json` keyed by `acc`+`name` |
+| `queue-analysis-evaluator/` | Analytical state-dependent Markovian model via `llm-inferno/queue-analysis`; loads Alpha/Beta/Gamma from `model-data.json` keyed by `acc`+`name` |
 | `blis-evaluator/` | Discrete-event simulation via `inference-sim/BLIS`; loads KV/batch/hardware params from `blis-config.json`; latency backend controlled by `LATENCY_BACKEND` (default: `roofline`; also: `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics`) |
 
 ### Important invariants
 
 - `throughput ≤ RPS` — server-sim clamps noisy throughput to RPS to preserve this.
-- `maxRPS = 0` from an evaluator means the evaluator is overloaded; server-sim skips noise injection and propagates the failure.
+- `saturation != ""` from an evaluator means the server is overloaded; server-sim skips noise injection. `AnalysisData.IsSaturated()` is the canonical check. See `pkg/evaluator/types.go` for the `SaturationXxx` constants (`"bandwidth"`, `"kv_capacity"`, `"overloaded"`).
+  - Metrics may be zero (BLIS pre-sim, DES was skipped) or populated with degraded-state values (queue-analysis, BLIS post-sim). `maxRPS` is populated where computable.
+  - BLIS performs an analytical check *before* the DES using decode bandwidth and KV capacity bounds, avoiding expensive simulations on overloaded configs. All saturation checks apply a 2% tolerance margin (`saturationMargin = 0.98`).
 - The evaluator HTTP client has a 10-minute wall-clock timeout (DES runs can be slow). The BLIS default simulation horizon is 300 s of *simulated* time — a longer horizon reduces cold-start throughput bias but increases wall-clock runtime; tune `simulationHorizon` in `blis-config.json` per entry if needed.
 
 ## Configuration

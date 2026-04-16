@@ -33,7 +33,7 @@ Three evaluator backends are available, each implementing the same `POST /solve`
 | Phase | Evaluator | Approach |
 |-------|-----------|----------|
 | 1 | [Dummy](#phase-1-skeleton--dummy-evaluator) | Hardcoded metrics scaled by RPS |
-| 2 | [Queue-Analysis](#phase-2-queue-analysis-evaluator) | Analytical M/G/1 queue model |
+| 2 | [Queue-Analysis](#phase-2-queue-analysis-evaluator) | Analytical state-dependent Markovian queue model |
 | 3 | [BLIS](#phase-3-blis-discrete-event-simulator-evaluator) | Discrete-event simulation |
 
 ## Evaluator Interface
@@ -60,12 +60,15 @@ flowchart LR
         a5["avgTTFT · float32  (ms)"]
         a6["avgITL · float32  (ms)"]
         a7["maxRPS · float32  (req/s)"]
+        a8["saturation · string  (omitted when empty)"]
     end
 
     req -->|"evaluator-specific\nparameters resolved\nfrom config file"| resp
 ```
 
 Evaluator-specific parameters (latency coefficients, KV cache size, etc.) are never exposed in the request — each backend resolves them internally from its own config file keyed by `accelerator + model`.
+
+The `saturation` field is set when the offered load exceeds server capacity. Values: `"bandwidth"` (decode memory bandwidth bottleneck), `"kv_capacity"` (KV cache exhausted), `"overloaded"` (generic, e.g. queue-analysis). When `saturation` is present, latency metrics may be unreliable or zero; `maxRPS` is still populated where computable. Noise is never applied to saturated results. See [docs/saturation-detection.md](docs/saturation-detection.md) for details.
 
 ---
 
@@ -211,7 +214,7 @@ curl -s http://localhost:8080/simulate/<uuid>
 # → {"jobID":"<uuid>","status":"completed","result":{"avgTTFT":120.0,"avgITL":54.9,"maxRPS":1.31,...}}
 ```
 
-Note: if RPS exceeds the model's maximum stable rate (`maxRPS`), the job will show `"status":"failed"`.
+Note: if RPS exceeds the model's maximum stable rate (`maxRPS`), the job completes with `"saturation":"overloaded"` rather than failing. Metrics reflect degraded-state behaviour; `maxRPS` indicates the capacity limit.
 
 **Unknown accelerator/model** — the job will show `"status":"failed"`:
 
@@ -257,7 +260,7 @@ flowchart TB
 
     PD -->|POST /solve| Config
     PD -->|RPS + token means| Workload
-    Metrics --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgWaitTime · avgTTFT\navgITL · maxRPS"]
+    Metrics --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgWaitTime · avgTTFT\navgITL · maxRPS\nsaturation (if overloaded)"]
 ```
 
 ### Prerequisites
@@ -307,6 +310,8 @@ curl -s http://localhost:8080/simulate/<uuid>
 ```
 
 > **Note:** DES simulations run for a configurable horizon (default 300 seconds of simulated time). The job will show `"status":"pending"` while the simulation is running. server-sim's HTTP client has a 10-minute wall-clock timeout.
+>
+> **Saturation check:** Before running the DES, the BLIS evaluator performs an analytical check using decode memory bandwidth and KV cache capacity bounds. If the workload is analytically overloaded, the job completes immediately (DES is skipped) with `"saturation":"bandwidth"` or `"saturation":"kv_capacity"` and `maxRPS` set to the derived capacity limit. If the DES runs but produces overload indicators (`StillQueued > 0`, etc.), the result is flagged `"saturation":"overloaded"`. This check is independent of `LATENCY_BACKEND`.
 
 ### Configuration
 

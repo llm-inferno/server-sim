@@ -38,6 +38,11 @@ func (s *Server) Run() error {
 	return s.router.Run(fmt.Sprintf(":%d", s.cfg.Port))
 }
 
+// Handler returns the underlying http.Handler, primarily for use in tests.
+func (s *Server) Handler() http.Handler {
+	return s.router
+}
+
 // handleSimulate accepts a ProblemData, creates an async job, and returns the job ID.
 func (s *Server) handleSimulate(c *gin.Context) {
 	var pd evaluator.ProblemData
@@ -54,7 +59,7 @@ func (s *Server) handleSimulate(c *gin.Context) {
 			s.jobs.Fail(id, err.Error())
 			return
 		}
-		if s.cfg.NoiseEnabled {
+		if !result.IsSaturated() && s.cfg.NoiseEnabled {
 			result = noise.AddNoise(result, s.cfg.Noise)
 			if result.Throughput > pd.RPS {
 				result.Throughput = pd.RPS

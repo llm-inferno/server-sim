@@ -14,6 +14,9 @@ import (
 	"github.com/llm-inferno/server-sim/pkg/evaluator"
 )
 
+// saturationMargin mirrors the tolerance used by other evaluators (2% headroom).
+const saturationMargin = 0.98
+
 func main() {
 	port := 8081
 	if v := os.Getenv("DUMMY_EVALUATOR_PORT"); v != "" {
@@ -48,6 +51,11 @@ func handleSolve(c *gin.Context) {
 		AvgTTFT:      50 * loadFactor,
 		AvgITL:       15 * loadFactor,
 		MaxRPS:       float32(pd.MaxConcurrency) * 0.08,
+	}
+
+	// Saturation check: flag overload when offered rate exceeds computed capacity.
+	if ad.MaxRPS > 0 && float64(pd.RPS) > float64(ad.MaxRPS)*saturationMargin {
+		ad.Saturation = evaluator.SaturationOverload
 	}
 
 	c.IndentedJSON(http.StatusOK, ad)
