@@ -19,3 +19,7 @@
 .DS_Store
 ~*
 
+# Saturation sweep: transient per-run output (commit selectively to docs/sweep-results/)
+scripts/sweep_results/*.csv
+scripts/sweep_results/*.md
+

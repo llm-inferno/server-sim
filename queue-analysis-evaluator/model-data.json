@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "name": "granite_8b",
+      "acc": "H100",
+      "maxBatchSize": 256,
+      "atTokens": 512,
+      "perfParms": {
+        "alpha": 8.0,
+        "beta": 0.016,
+        "gamma": 0.0005
+      }
+    }
+  ]
+}
