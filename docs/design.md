@@ -22,7 +22,7 @@ Consumer (REST client)
 | Phase | Evaluator | Description |
 |-------|-----------|-------------|
 | 1 | Dummy | Skeleton + hardcoded metrics. Validates the full async job flow. |
-| 2 | Analytical model | `queue-analysis-evaluator/` wraps [queue-analysis](https://github.com/llm-inferno/queue-analysis) as a Go library. Loads Alpha/Beta/Gamma from `model-data.json` (keyed by `acc`+`name`). MaxQueueSize defaults to 128 (`DEFAULT_MAX_QUEUE_SIZE`). Noise enabled via `NOISE_ENABLED=true`. |
+| 2 | Analytical model | `queue-analysis-evaluator/` wraps [queue-analysis](https://github.com/llm-inferno/queue-analysis) as a Go library. Loads Alpha/Beta/Gamma from `model-data.json` (keyed by `acc`+`name`). MaxQueueSize defaults to 0 (`DEFAULT_MAX_QUEUE_SIZE`; 0 = no external queue). Noise enabled via `NOISE_ENABLED=true`. |
 | 3 | DES | `blis-evaluator/` wraps [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as a Go library. Loads KV/batch/hardware params from `blis-config.json` (keyed by `accelerator`+`model`). Latency backend controlled by `LATENCY_BACKEND` (default: `roofline`). |
 
 ## Architecture

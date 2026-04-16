@@ -229,7 +229,7 @@ curl -s -X POST http://localhost:8080/simulate \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MODEL_DATA_FILE` | `model-data.json` | Path to model-data.json |
-| `DEFAULT_MAX_QUEUE_SIZE` | `128` | Default max queue size for all models |
+| `DEFAULT_MAX_QUEUE_SIZE` | `0` | Default max queue size for all models (0 = no external queue) |
 | `EVALUATOR_PORT` | `8081` | Queue-analysis evaluator listen port |
 
 ---

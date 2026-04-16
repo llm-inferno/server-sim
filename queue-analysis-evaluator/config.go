@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-const defaultMaxQueueSize = 128
+const defaultMaxQueueSize = 0
 
 // perfParms holds the queue-analysis timing coefficients for a server.
 type perfParms struct {
@@ -44,7 +44,7 @@ type serverConfig struct {
 // "acc|name" for O(1) request-time access.
 //
 // MaxQueueSize is not in model-data.json; it is read from DEFAULT_MAX_QUEUE_SIZE
-// (defaulting to 128) and applied uniformly to all entries.
+// (defaulting to 0, i.e. no external queue) and applied uniformly to all entries.
 func loadConfig() (map[string]serverConfig, error) {
 	path := os.Getenv("MODEL_DATA_FILE")
 	if path == "" {

@@ -62,7 +62,7 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 
 **Rationale:** Reuses existing calibrated data rather than duplicating it in a new config format.
 
-**`MaxQueueSize`:** Not in `model-data.json`; provided as a uniform default via `DEFAULT_MAX_QUEUE_SIZE` env var (default: 128).
+**`MaxQueueSize`:** Not in `model-data.json`; provided as a uniform default via `DEFAULT_MAX_QUEUE_SIZE` env var (default: 0, i.e. no external queue).
 
 ---
 
@@ -155,7 +155,7 @@ server-sim is a new repo in the llm-inferno family. Its purpose is to produce pe
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MODEL_DATA_FILE` | `model-data.json` | Path to model-data.json |
-| `DEFAULT_MAX_QUEUE_SIZE` | `128` | Default MaxQueueSize for all models |
+| `DEFAULT_MAX_QUEUE_SIZE` | `0` | Default MaxQueueSize for all models (0 = no external queue) |
 | `EVALUATOR_PORT` | `8081` | Listen port |
 
 ### blis-evaluator
