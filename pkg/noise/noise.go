@@ -20,7 +20,7 @@ func AddNoise(ad evaluator.AnalysisData, cfg Config) evaluator.AnalysisData {
 		if v == 0 {
 			return 0
 		}
-		noisy := float64(v) + rand.NormFloat64()*cfg.StdFraction*float64(v)
+		noisy := float64(v) * (1 + rand.NormFloat64()*cfg.StdFraction)
 		return float32(math.Max(0, noisy))
 	}
 

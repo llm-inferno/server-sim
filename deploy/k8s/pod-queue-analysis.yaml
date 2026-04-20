@@ -16,12 +16,25 @@ spec:
           value: "http://localhost:8081"
         - name: NOISE_ENABLED
           value: "false"
-
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
     - name: evaluator
       image: evaluator:latest
-      args: ["queue-analysis"]
+      args: [ "queue-analysis" ]
       ports:
         - containerPort: 8081
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
       env:
         - name: EVALUATOR_PORT
           value: "8081"
@@ -30,7 +43,6 @@ spec:
       volumeMounts:
         - name: evaluator-config
           mountPath: /app/config
-
   volumes:
     - name: evaluator-config
       configMap:

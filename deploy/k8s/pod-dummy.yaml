@@ -16,12 +16,25 @@ spec:
           value: "http://localhost:8081"
         - name: NOISE_ENABLED
           value: "false"
-
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
     - name: evaluator
       image: evaluator:latest
-      args: ["dummy"]
+      args: [ "dummy" ]
       ports:
         - containerPort: 8081
       env:
         - name: EVALUATOR_PORT
           value: "8081"
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"

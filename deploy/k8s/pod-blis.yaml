@@ -12,7 +12,12 @@ spec:
     # Remove this section if you supply the files via a pre-populated PVC instead.
     - name: fetch-configs
       image: busybox
-      command: ["/bin/sh", "-c", "echo 'Download config files here and place under /config'"]
+      command:
+        [
+          "/bin/sh",
+          "-c",
+          "echo 'Download config files here and place under /config'",
+        ]
       volumeMounts:
         - name: evaluator-config
           mountPath: /config
@@ -26,12 +31,25 @@ spec:
           value: "http://localhost:8081"
         - name: NOISE_ENABLED
           value: "false"
-
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
     - name: evaluator
       image: evaluator:latest
-      args: ["blis"]
+      args: [ "blis" ]
       ports:
         - containerPort: 8081
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
       env:
         - name: EVALUATOR_PORT
           value: "8081"
@@ -44,7 +62,6 @@ spec:
       volumeMounts:
         - name: evaluator-config
           mountPath: /app/config
-
   volumes:
     - name: evaluator-config
       configMap:
