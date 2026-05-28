@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-server-config
+data:
+  vllm-eval-config.json: |
+    {
+      "configs": [
+        {
+          "accelerator": "H100",
+          "model": "ibm-granite/granite-3.1-8b-instruct",
+          "vllmServedModelName": "granite",
+          "vllmPort": 8000,
+          "warmupSec": 5,
+          "minWindowSec": 20,
+          "maxWindowSec": 300,
+          "targetSamples": 200,
+          "minSamples": 50,
+          "ignoreEOS": true,
+          "queueTimeMetric": "vllm:request_queue_time_seconds"
+        }
+      ]
+    }
