@@ -51,20 +51,25 @@ func errorRate(samples []sample) float64 {
 
 // ttftGrowth fits a line over the TTFT-by-index series and returns the
 // fractional growth from start to end:  (end_y - start_y) / start_y.
+// Failed samples (TTFT=0) are excluded from the regression.
 // Uses a minimal least-squares slope.
 func ttftGrowth(samples []sample) float64 {
-	n := len(samples)
-	if n < 2 {
-		return 0
-	}
 	var sumX, sumY, sumXY, sumXX float64
+	var n int
 	for i, s := range samples {
+		if s.Failed {
+			continue
+		}
 		x := float64(i)
 		y := float64(s.TTFT.Milliseconds())
 		sumX += x
 		sumY += y
 		sumXY += x * y
 		sumXX += x * x
+		n++
+	}
+	if n < 2 {
+		return 0
 	}
 	N := float64(n)
 	denom := N*sumXX - sumX*sumX
@@ -74,7 +79,7 @@ func ttftGrowth(samples []sample) float64 {
 	slope := (N*sumXY - sumX*sumY) / denom
 	intercept := (sumY - slope*sumX) / N
 	startY := intercept
-	endY := intercept + slope*float64(n-1)
+	endY := intercept + slope*float64(len(samples)-1)
 	if startY <= 0 {
 		return 0
 	}

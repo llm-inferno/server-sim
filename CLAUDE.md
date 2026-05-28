@@ -76,7 +76,7 @@ blis-evaluator additional vars: `BLIS_CONFIG_FILE`, `HW_CONFIG_FILE`, `LATENCY_B
 
 queue-analysis-evaluator additional vars: `MODEL_DATA_FILE`, `DEFAULT_MAX_QUEUE_SIZE`, `EVALUATOR_PORT`.
 
-vllm-server-evaluator additional vars: `VLLM_EVAL_CONFIG_FILE`, `POD_NAME`, `POD_NAMESPACE`, `VLLM_NAMESPACE`, `EVALUATOR_PORT`.
+vllm-server-evaluator additional vars: `VLLM_EVAL_CONFIG_FILE`, `POD_NAMESPACE`, `VLLM_NAMESPACE`, `EVALUATOR_PORT`.
 
 ## Module
 

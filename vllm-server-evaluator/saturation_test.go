@@ -48,6 +48,31 @@ func TestDetectSaturation_QueueDominance(t *testing.T) {
 	}
 }
 
+func TestDetectSaturation_TTFTTrend_IgnoresFailedSamples(t *testing.T) {
+	// 20 stable successful samples with one failed sample interspersed.
+	// Error rate = 1/21 ≈ 4.8% (below the 5% threshold), so only the TTFT
+	// trend signal is relevant. The failed sample's TTFT=0 must not pull the
+	// regression line and produce a false positive.
+	samples := make([]sample, 21)
+	ttfts := []time.Duration{
+		100, 102, 101, 99, 100, 103, 98, 101, 100, 102,
+		101, 99, 100, 103, 98, 101, 100, 102, 101, 99,
+	}
+	j := 0
+	for i := range samples {
+		if i == 10 {
+			samples[i] = sample{Failed: true, StatusCode: 0}
+		} else {
+			samples[i] = sample{TTFT: ttfts[j] * time.Millisecond}
+			j++
+		}
+	}
+	res := windowResult{Samples: samples}
+	if got := detectSaturation(res, 0); got != "" {
+		t.Errorf("got %q, want empty (failed sample should be ignored, TTFT is stable)", got)
+	}
+}
+
 func TestDetectSaturation_ErrorRate(t *testing.T) {
 	samples := []sample{
 		{TTFT: 100 * time.Millisecond},
