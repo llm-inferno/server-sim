@@ -35,6 +35,7 @@ Three evaluator backends are available, each implementing the same `POST /solve`
 | 1 | [Dummy](#phase-1-skeleton--dummy-evaluator) | Hardcoded metrics scaled by RPS |
 | 2 | [Queue-Analysis](#phase-2-queue-analysis-evaluator) | Analytical state-dependent Markovian queue model |
 | 3 | [BLIS](#phase-3-blis-discrete-event-simulator-evaluator) | Discrete-event simulation |
+| 4 | [vllm-server](docs/vllm-server-evaluator.md) | Drives a real paired vLLM server (open-loop Poisson) |
 
 ## Evaluator Interface
 

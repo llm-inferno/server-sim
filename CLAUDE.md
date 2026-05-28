@@ -18,6 +18,8 @@ Run individual evaluators:
 go run ./dummy-evaluator
 go run ./queue-analysis-evaluator          # requires MODEL_DATA_FILE
 cd blis-evaluator && BLIS_CONFIG_FILE=blis-config.json HW_CONFIG_FILE=/path/to/hardware_config.json go run .
+# vllm-server (requires VLLM_EVAL_CONFIG_FILE and a paired vLLM pod)
+VLLM_EVAL_CONFIG_FILE=vllm-server-evaluator/vllm-eval-config.json go run ./vllm-server-evaluator
 ```
 
 There are no tests (`*_test.go` files) in this repo yet.
@@ -48,6 +50,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 | `dummy-evaluator/` | Hardcoded metrics scaled by RPS — no config needed |
 | `queue-analysis-evaluator/` | Analytical state-dependent Markovian model via `llm-inferno/queue-analysis`; loads Alpha/Beta/Gamma from `model-data.json` keyed by `acc`+`name` |
 | `blis-evaluator/` | Discrete-event simulation via `inference-sim/BLIS`; loads KV/batch/hardware params from `blis-config.json`; latency backend controlled by `LATENCY_BACKEND` (default: `roofline`; also: `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics`) |
+| `vllm-server-evaluator/` | Drives a real paired vLLM server (open-loop Poisson + streaming TTFT/ITL); pairing established by control-loop Actuator via labels |
 
 ### Important invariants
 
@@ -72,6 +75,8 @@ server-sim env vars (`pkg/config/config.go`):
 blis-evaluator additional vars: `BLIS_CONFIG_FILE`, `HW_CONFIG_FILE`, `LATENCY_BACKEND`, `EVALUATOR_PORT`.
 
 queue-analysis-evaluator additional vars: `MODEL_DATA_FILE`, `DEFAULT_MAX_QUEUE_SIZE`, `EVALUATOR_PORT`.
+
+vllm-server-evaluator additional vars: `VLLM_EVAL_CONFIG_FILE`, `POD_NAME`, `POD_NAMESPACE`, `VLLM_NAMESPACE`, `EVALUATOR_PORT`.
 
 ## Module
 
