@@ -1,0 +1,50 @@
+# Reference template for the paired vLLM Deployment. The control-loop Actuator
+# is responsible for creating/scaling Deployments matching this shape and for
+# writing inferno.server.pair-id labels to pair pods 1:1 with the managed
+# Deployment's pods. This file is documentation, not auto-applied.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-granite-h100
+  labels:
+    inferno.vllm.model: granite
+    inferno.vllm.accelerator: H100
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-granite-h100
+  template:
+    metadata:
+      labels:
+        app: vllm-granite-h100
+        inferno.vllm.model: granite
+        inferno.vllm.accelerator: H100
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:latest
+          args:
+            - "--model"
+            - "ibm-granite/granite-3.1-8b-instruct"
+            - "--served-model-name"
+            - "granite"
+            - "--max-model-len"
+            - "4096"
+            - "--port"
+            - "8000"
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 5
