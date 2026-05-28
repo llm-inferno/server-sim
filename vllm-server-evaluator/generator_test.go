@@ -77,3 +77,56 @@ func TestRunOneRequest_HTTPError(t *testing.T) {
 		t.Errorf("StatusCode = %d, want 500", s.StatusCode)
 	}
 }
+
+func TestRunWindow_CollectsExpectedSampleCount(t *testing.T) {
+	srv := fakeVLLMServer(t, 2, 10*time.Millisecond, 20*time.Millisecond)
+	defer srv.Close()
+
+	wp := windowParams{
+		BaseURL:       srv.URL,
+		Model:         "m",
+		Spec:          requestSpec{InputTokens: 4, OutputTokens: 2, IgnoreEOS: true},
+		RPS:           20.0,
+		WarmupSec:     0,
+		MinWindowSec:  1,
+		MaxWindowSec:  3,
+		TargetSamples: 10,
+		Concurrency:   8,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := runWindow(ctx, wp)
+	if err != nil {
+		t.Fatalf("runWindow: %v", err)
+	}
+	if len(res.Samples) < 10 {
+		t.Errorf("samples = %d, want >= 10 (target reached)", len(res.Samples))
+	}
+}
+
+func TestRunWindow_CapsAtMaxWindow(t *testing.T) {
+	srv := fakeVLLMServer(t, 2, 10*time.Millisecond, 20*time.Millisecond)
+	defer srv.Close()
+
+	wp := windowParams{
+		BaseURL:       srv.URL,
+		Model:         "m",
+		Spec:          requestSpec{InputTokens: 4, OutputTokens: 2, IgnoreEOS: true},
+		RPS:           1.0, // very slow
+		WarmupSec:     0,
+		MinWindowSec:  1,
+		MaxWindowSec:  2,    // 1.0 RPS over 2s = ~2 samples max — far below target
+		TargetSamples: 1000,
+		Concurrency:   2,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	res, err := runWindow(ctx, wp)
+	if err != nil {
+		t.Fatalf("runWindow: %v", err)
+	}
+	elapsed := res.WindowEnd.Sub(res.WindowStart)
+	if elapsed < 1*time.Second || elapsed > 3*time.Second {
+		t.Errorf("window length = %v, want ~2s (capped)", elapsed)
+	}
+}

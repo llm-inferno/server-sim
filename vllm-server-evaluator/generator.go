@@ -5,9 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"math"
+	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -98,4 +102,103 @@ func timeSince(start, t time.Time) time.Duration {
 		return 0
 	}
 	return t.Sub(start)
+}
+
+// windowParams configures one measurement window.
+type windowParams struct {
+	BaseURL       string
+	Model         string
+	Spec          requestSpec
+	RPS           float64
+	WarmupSec     int
+	MinWindowSec  int
+	MaxWindowSec  int
+	TargetSamples int
+	Concurrency   int
+	Seed          int64
+}
+
+// runWindow drives a Poisson stream of requests at wp.RPS for
+// max(MinWindowSec, TargetSamples/RPS) seconds, capped at MaxWindowSec.
+// Samples started during the warmup prefix are discarded from results.
+//
+// Concurrency limits the number of simultaneous in-flight requests; arrivals
+// that would exceed it are simply dropped from this driver (mimicking real
+// load that vLLM would queue itself — the per-request sample includes vLLM's
+// own queue time).
+func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
+	if wp.RPS <= 0 {
+		return nil, fmt.Errorf("non-positive RPS: %v", wp.RPS)
+	}
+	if wp.Concurrency <= 0 {
+		wp.Concurrency = 64
+	}
+	if wp.Seed == 0 {
+		wp.Seed = time.Now().UnixNano()
+	}
+
+	rng := rand.New(rand.NewSource(wp.Seed))
+
+	// Compute window length.
+	target := float64(wp.TargetSamples) / wp.RPS
+	wantSec := math.Max(float64(wp.MinWindowSec), target)
+	if wantSec > float64(wp.MaxWindowSec) {
+		wantSec = float64(wp.MaxWindowSec)
+	}
+	totalSec := float64(wp.WarmupSec) + wantSec
+	deadline := time.Now().Add(time.Duration(totalSec * float64(time.Second)))
+	windowStart := time.Now().Add(time.Duration(wp.WarmupSec) * time.Second)
+
+	sem := make(chan struct{}, wp.Concurrency)
+	var mu sync.Mutex
+	var samples []sample
+	var warmup int
+	var wg sync.WaitGroup
+
+	// Poisson interarrival: exponential with mean 1/RPS.
+	for {
+		gap := time.Duration(rng.ExpFloat64() / wp.RPS * float64(time.Second))
+		select {
+		case <-time.After(gap):
+		case <-ctx.Done():
+			wg.Wait()
+			return &windowResult{Samples: samples, WindowStart: windowStart, WindowEnd: time.Now(), WarmupSamples: warmup}, ctx.Err()
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+
+		// Try to acquire concurrency slot; drop if full.
+		select {
+		case sem <- struct{}{}:
+		default:
+			continue
+		}
+
+		startedAt := time.Now()
+		isWarmup := startedAt.Before(windowStart)
+		seed := rng.Int63()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s := runOneRequest(ctx, wp.BaseURL, wp.Model, wp.Spec, seed)
+			s.StartedAt = startedAt
+			mu.Lock()
+			defer mu.Unlock()
+			if isWarmup {
+				warmup++
+				return
+			}
+			samples = append(samples, s)
+		}()
+	}
+	wg.Wait()
+
+	return &windowResult{
+		Samples:       samples,
+		WindowStart:   windowStart,
+		WindowEnd:     time.Now(),
+		WarmupSamples: warmup,
+	}, nil
 }
