@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -58,15 +57,17 @@ func main() {
 		log.Printf("k8s client initialized")
 	}
 
+	state := &handlerState{Lookup: lookup}
+
 	var pairing atomic.Pointer[pairingState]
 	go func() {
-		// Best-effort resolution loop — Actuator may not have written labels yet.
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			ps, err := resolvePairing(ctx, k8sClient, vllmPort)
 			cancel()
 			if err == nil {
 				pairing.Store(ps)
+				state.Pairing = ps
 				log.Printf("pairing resolved: vLLM pod %s:%d (pair-id=%s)", ps.VLLMPodIP, ps.VLLMPort, ps.PairID)
 			} else {
 				log.Printf("pairing not yet resolved: %v", err)
@@ -76,14 +77,7 @@ func main() {
 	}()
 
 	r := gin.Default()
-	r.POST("/solve", func(c *gin.Context) {
-		ps := pairing.Load()
-		if ps == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vllm pairing not ready"})
-			return
-		}
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "vllm-server evaluator: handler not yet implemented", "vllm": fmt.Sprintf("%s:%d", ps.VLLMPodIP, ps.VLLMPort)})
-	})
+	r.POST("/solve", solveHandler(state))
 	log.Printf("vllm-server-evaluator listening on :%d", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
 		log.Fatalf("vllm-server-evaluator: %v", err)
