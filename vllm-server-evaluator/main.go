@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -59,15 +58,13 @@ func main() {
 
 	state := &handlerState{Lookup: lookup}
 
-	var pairing atomic.Pointer[pairingState]
 	go func() {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			ps, err := resolvePairing(ctx, k8sClient, vllmPort)
 			cancel()
 			if err == nil {
-				pairing.Store(ps)
-				state.Pairing = ps
+				state.Pairing.Store(ps)
 				log.Printf("pairing resolved: vLLM pod %s:%d (pair-id=%s)", ps.VLLMPodIP, ps.VLLMPort, ps.PairID)
 			} else {
 				log.Printf("pairing not yet resolved: %v", err)

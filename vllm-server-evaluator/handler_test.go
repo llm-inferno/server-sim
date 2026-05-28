@@ -90,13 +90,13 @@ func TestSolve_HappyPath(t *testing.T) {
 		},
 	}
 	state := &handlerState{
-		Lookup: cfg,
-		Pairing: &pairingState{
-			VLLMPodIP: strings.TrimPrefix(srv.URL, "http://"),
-			VLLMPort:  0,
-		},
+		Lookup:          cfg,
 		BaseURLOverride: srv.URL, // test hook bypasses ip:port construction
 	}
+	state.Pairing.Store(&pairingState{
+		VLLMPodIP: strings.TrimPrefix(srv.URL, "http://"),
+		VLLMPort:  0,
+	})
 	r.POST("/solve", solveHandler(state))
 
 	pd := evaluator.ProblemData{
@@ -143,9 +143,9 @@ func TestSolve_PairingNotReady(t *testing.T) {
 func TestSolve_UnknownModel(t *testing.T) {
 	r := gin.New()
 	state := &handlerState{
-		Lookup:  map[string]serverConfig{},
-		Pairing: &pairingState{VLLMPodIP: "127.0.0.1"},
+		Lookup: map[string]serverConfig{},
 	}
+	state.Pairing.Store(&pairingState{VLLMPodIP: "127.0.0.1"})
 	r.POST("/solve", solveHandler(state))
 
 	body, _ := json.Marshal(evaluator.ProblemData{Accelerator: "H100", Model: "missing"})
@@ -170,9 +170,9 @@ func TestSolve_ServedModelMismatch(t *testing.T) {
 	}
 	state := &handlerState{
 		Lookup:          cfg,
-		Pairing:         &pairingState{VLLMPodIP: strings.TrimPrefix(srv.URL, "http://")},
 		BaseURLOverride: srv.URL,
 	}
+	state.Pairing.Store(&pairingState{VLLMPodIP: strings.TrimPrefix(srv.URL, "http://")})
 	r.POST("/solve", solveHandler(state))
 
 	body, _ := json.Marshal(evaluator.ProblemData{

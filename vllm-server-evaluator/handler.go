@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,8 +15,11 @@ import (
 
 // handlerState is the shared state injected into solveHandler.
 type handlerState struct {
-	Lookup  map[string]serverConfig
-	Pairing *pairingState
+	Lookup map[string]serverConfig
+
+	// Pairing is updated by the background resolver goroutine in main.go.
+	// Tests populate it directly via Pairing.Store(...) before the handler is invoked.
+	Pairing atomic.Pointer[pairingState]
 
 	// BaseURLOverride is a test hook. Production leaves this empty and the
 	// handler constructs the URL from Pairing.VLLMPodIP:Pairing.VLLMPort.
@@ -34,7 +38,8 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 			return
 		}
 
-		if st.Pairing == nil || (st.BaseURLOverride == "" && st.Pairing.VLLMPodIP == "") {
+		ps := st.Pairing.Load()
+		if (ps == nil || ps.VLLMPodIP == "") && st.BaseURLOverride == "" {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vllm pairing not ready"})
 			return
 		}
@@ -50,7 +55,7 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 
 		baseURL := st.BaseURLOverride
 		if baseURL == "" {
-			baseURL = fmt.Sprintf("http://%s:%d", st.Pairing.VLLMPodIP, st.Pairing.VLLMPort)
+			baseURL = fmt.Sprintf("http://%s:%d", ps.VLLMPodIP, ps.VLLMPort)
 		}
 
 		st.vllmMu.Lock()
