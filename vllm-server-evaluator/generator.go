@@ -155,14 +155,22 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 	var warmup int
 	var wg sync.WaitGroup
 
+	deadlineCh := time.After(time.Until(deadline))
+
 	// Poisson interarrival: exponential with mean 1/RPS.
 	for {
 		gap := time.Duration(rng.ExpFloat64() / wp.RPS * float64(time.Second))
 		select {
 		case <-time.After(gap):
-		case <-ctx.Done():
+		case <-deadlineCh:
+			// Deadline fired while waiting for the next Poisson arrival; stop immediately.
+			windowEnd := time.Now()
 			wg.Wait()
-			return &windowResult{Samples: samples, WindowStart: windowStart, WindowEnd: time.Now(), WarmupSamples: warmup}, ctx.Err()
+			return &windowResult{Samples: samples, WindowStart: windowStart, WindowEnd: windowEnd, WarmupSamples: warmup}, nil
+		case <-ctx.Done():
+			windowEnd := time.Now()
+			wg.Wait()
+			return &windowResult{Samples: samples, WindowStart: windowStart, WindowEnd: windowEnd, WarmupSamples: warmup}, ctx.Err()
 		}
 		if time.Now().After(deadline) {
 			break
@@ -193,12 +201,13 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 			samples = append(samples, s)
 		}()
 	}
+	windowEnd := time.Now()
 	wg.Wait()
 
 	return &windowResult{
 		Samples:       samples,
 		WindowStart:   windowStart,
-		WindowEnd:     time.Now(),
+		WindowEnd:     windowEnd,
 		WarmupSamples: warmup,
 	}, nil
 }
