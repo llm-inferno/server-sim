@@ -83,6 +83,17 @@ corruption.
 2. `vllm:request_queue_time_seconds` mean > `vllm:request_inference_time_seconds` mean.
 3. ≥5% request error rate, or any 429 from vLLM.
 
+## RBAC scope
+
+`deploy/k8s/rbac-vllm-server.yaml` creates a namespace-scoped `Role` that
+grants `get/list/watch` on pods. This is sufficient when the evaluator pod and
+the vLLM pods share the same namespace (the default).
+
+If `VLLM_NAMESPACE` differs from the namespace where the evaluator runs,
+replace the `Role` + `RoleBinding` with a `ClusterRole` + `ClusterRoleBinding`
+scoped to the same pod-list permission, and bind it to the `vllm-server-evaluator`
+ServiceAccount.
+
 ## Local development
 
 Use `deploy/k8s/pod-vllm-server.yaml` as a starting point. You'll need to:
