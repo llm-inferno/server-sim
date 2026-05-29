@@ -43,6 +43,7 @@ The `evaluator` image contains three binaries. The container `args` field select
 | `["dummy"]` | `dummy-evaluator` | No config files required |
 | `["queue-analysis"]` | `queue-analysis-evaluator` | Requires `model-data.json` |
 | `["blis"]` | `blis-evaluator` | Requires `blis-config.json`, `hardware_config.json`, HF config files |
+| `["vllm-server"]` | `vllm-server-evaluator` | Drives a real paired vLLM server. Requires `vllm-eval-config.json` plus K8s RBAC; see [vllm-server-evaluator.md](./vllm-server-evaluator.md). |
 
 ## Pod Manifests
 
@@ -53,6 +54,7 @@ Ready-to-use pod specs are in `deploy/k8s/`:
 | `pod-dummy.yaml` | dummy | none |
 | `pod-queue-analysis.yaml` | queue-analysis | `queue-analysis-config` |
 | `pod-blis.yaml` | blis | `blis-config` |
+| `pod-vllm-server.yaml` | vllm-server | `vllm-server-config` |
 
 ### Deploying
 

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vllm-server-evaluator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vllm-server-evaluator
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vllm-server-evaluator
+subjects:
+  - kind: ServiceAccount
+    name: vllm-server-evaluator
+roleRef:
+  kind: Role
+  name: vllm-server-evaluator
+  apiGroup: rbac.authorization.k8s.io
