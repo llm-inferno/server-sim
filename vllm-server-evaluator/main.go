@@ -30,6 +30,6 @@ func main() {
 	})
 	log.Printf("vllm-server-evaluator listening on :%d", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
-		panic(err)
+		log.Fatalf("vllm-server-evaluator: %v", err)
 	}
 }
