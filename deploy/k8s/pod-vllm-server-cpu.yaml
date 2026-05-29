@@ -1,0 +1,75 @@
+# server-sim + vllm-server-evaluator pod for local CPU testing on kind.
+# Paired with deployment-vllm-cpu.yaml via inferno.server.pair-id label.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: server-sim-vllm-server-cpu
+  labels:
+    app: server-sim
+    evaluator: vllm-server
+    inferno.server.pair-id: "dev-cpu-pair-1"
+    inferno.server.vllm-deployment: "vllm-qwen-cpu"
+spec:
+  serviceAccountName: vllm-server-evaluator
+  containers:
+    - name: server-sim
+      image: server-sim:latest
+      imagePullPolicy: Never
+      ports:
+        - containerPort: 8080
+      env:
+        - name: EVALUATOR_URL
+          value: "http://localhost:8081"
+        - name: NOISE_ENABLED
+          value: "false"
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "500m"
+    - name: evaluator
+      image: evaluator:latest
+      imagePullPolicy: Never
+      args: [ "vllm-server" ]
+      ports:
+        - containerPort: 8081
+      env:
+        - name: EVALUATOR_PORT
+          value: "8081"
+        - name: VLLM_EVAL_CONFIG_FILE
+          value: "/app/config/vllm-eval-config.json"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef: { fieldPath: metadata.name }
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef: { fieldPath: metadata.namespace }
+        - name: VLLM_NAMESPACE
+          value: "default"
+      volumeMounts:
+        - name: vllm-server-config
+          mountPath: /app/config
+        - name: podinfo
+          mountPath: /etc/podinfo
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "200m"
+        limits:
+          memory: "512Mi"
+          cpu: "1000m"
+  volumes:
+    - name: vllm-server-config
+      configMap:
+        name: vllm-server-config-cpu
+    - name: podinfo
+      downwardAPI:
+        items:
+          - path: pair-id
+            fieldRef:
+              fieldPath: "metadata.labels['inferno.server.pair-id']"
+          - path: vllm-deployment
+            fieldRef:
+              fieldPath: "metadata.labels['inferno.server.vllm-deployment']"

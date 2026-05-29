@@ -1,0 +1,66 @@
+# CPU-only vLLM deployment for local kind testing. Uses Qwen2.5-0.5B-Instruct
+# (public, ~1 GB) with --device cpu so no GPU resources are needed. Paired with
+# pod-vllm-server-cpu.yaml via inferno.server.pair-id label.
+#
+# First-run note: vLLM downloads the model from HuggingFace on startup (~1 GB).
+# readinessProbe gives up to 8 minutes total; adjust initialDelaySeconds if your
+# network is slow. To avoid repeated downloads mount a HF cache volume and set
+# HF_HOME to point at it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen-cpu
+  labels:
+    inferno.vllm.model: qwen
+    inferno.vllm.accelerator: cpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-qwen-cpu
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen-cpu
+        inferno.vllm.model: qwen
+        inferno.vllm.accelerator: cpu
+        inferno.server.pair-id: "dev-cpu-pair-1"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai-cpu:latest-arm64
+          args:
+            - "--model"
+            - "Qwen/Qwen2.5-0.5B-Instruct"
+            - "--served-model-name"
+            - "qwen"
+            - "--dtype"
+            - "float32"
+            - "--max-model-len"
+            - "512"
+            - "--max-num-seqs"
+            - "4"
+            - "--gpu-memory-utilization"
+            - "0.5"
+            - "--port"
+            - "8000"
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "6Gi"
+              cpu: "2000m"
+            limits:
+              memory: "10Gi"
+              cpu: "4000m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            failureThreshold: 30
