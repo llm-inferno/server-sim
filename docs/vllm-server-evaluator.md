@@ -23,7 +23,7 @@ Actuator** via labels and discovered by the evaluator via the K8s API.
 |---|---|
 | `accelerator`, `model` | lookup key (matches `ProblemData.Accelerator/Model`) |
 | `vllmServedModelName` | value of vLLM's `--served-model-name`; defaults to `model` |
-| `vllmPort` | vLLM container port |
+| `vllmPort` | vLLM container port; all entries in a single config file must share the same value (one paired vLLM per evaluator pod) — mismatched values cause a fatal startup error |
 | `warmupSec` | discarded prefix at start of each window |
 | `minWindowSec`, `maxWindowSec` | window bounds (sec) |
 | `targetSamples` | samples to aim for; if not reached by `maxWindowSec`, the window ends |
@@ -69,6 +69,8 @@ corruption.
 
 | Condition | HTTP response |
 |---|---|
+| Mismatched `vllmPort` values across config entries | fatal startup error (process exits) |
+| Not running in-cluster (no service-account token) | logs warning at startup; pairing loop returns error each tick; `/solve` returns 503 |
 | Unpaired or no Ready vLLM | 503 |
 | Served-model mismatch | 400 |
 | Insufficient samples within `maxWindowSec` | 500 |
