@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 func main() {
@@ -24,9 +29,60 @@ func main() {
 		}
 	}
 
+	// All config entries must specify the same vllmPort — this evaluator pod
+	// is paired with exactly one vLLM pod (which listens on one port), even
+	// if multiple accelerator/model combinations are routed through it.
+	vllmPort := 0
+	for _, sc := range lookup {
+		if vllmPort == 0 {
+			vllmPort = sc.VLLMPort
+			continue
+		}
+		if sc.VLLMPort != 0 && sc.VLLMPort != vllmPort {
+			log.Fatalf("vllm-eval-config has mismatched vllmPort values (%d vs %d); all entries must share the same port (one paired vLLM per evaluator pod)", vllmPort, sc.VLLMPort)
+		}
+	}
+	if vllmPort == 0 {
+		vllmPort = 8000
+	}
+
+	// Build K8s client once at startup; nil outside a cluster (pairing loop
+	// handles nil gracefully by returning an error each iteration).
+	var k8sClient kubernetes.Interface
+	if cfg, err := rest.InClusterConfig(); err != nil {
+		log.Printf("k8s in-cluster config not available: %v", err)
+	} else if c, err := kubernetes.NewForConfig(cfg); err != nil {
+		log.Printf("k8s client init failed: %v", err)
+	} else {
+		k8sClient = c
+		log.Printf("k8s client initialized")
+	}
+
+	var pairing atomic.Pointer[pairingState]
+	go func() {
+		// Best-effort resolution loop — Actuator may not have written labels yet.
+		for {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ps, err := resolvePairing(ctx, k8sClient, vllmPort)
+			cancel()
+			if err == nil {
+				pairing.Store(ps)
+				log.Printf("pairing resolved: vLLM pod %s:%d (pair-id=%s)", ps.VLLMPodIP, ps.VLLMPort, ps.PairID)
+			} else {
+				log.Printf("pairing not yet resolved: %v", err)
+			}
+			time.Sleep(15 * time.Second)
+		}
+	}()
+
 	r := gin.Default()
 	r.POST("/solve", func(c *gin.Context) {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "vllm-server evaluator: handler not yet implemented", "configsLoaded": len(lookup)})
+		ps := pairing.Load()
+		if ps == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "vllm pairing not ready"})
+			return
+		}
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "vllm-server evaluator: handler not yet implemented", "vllm": fmt.Sprintf("%s:%d", ps.VLLMPodIP, ps.VLLMPort)})
 	})
 	log.Printf("vllm-server-evaluator listening on :%d", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
