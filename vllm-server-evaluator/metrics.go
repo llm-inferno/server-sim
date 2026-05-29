@@ -11,9 +11,11 @@ import (
 )
 
 // scrapeMetrics fetches and parses vLLM's Prometheus /metrics endpoint,
-// extracting queue-time and inference-time histogram aggregates. Other
-// metrics in the response are ignored. Uses a 5s timeout.
-func scrapeMetrics(ctx context.Context, url string) (metricsScrape, error) {
+// extracting the configured queue-time histogram and the inference-time
+// histogram. queueTimeMetric is the metric base name (e.g.
+// "vllm:request_queue_time_seconds"); the function reads its _sum and _count
+// series. Other metrics are ignored. Uses a 5s timeout.
+func scrapeMetrics(ctx context.Context, url, queueTimeMetric string) (metricsScrape, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -30,6 +32,11 @@ func scrapeMetrics(ctx context.Context, url string) (metricsScrape, error) {
 		return metricsScrape{}, fmt.Errorf("scrape %s: status %d", url, resp.StatusCode)
 	}
 
+	queueSumPrefix := queueTimeMetric + "_sum "
+	queueCountPrefix := queueTimeMetric + "_count "
+	const inferSumPrefix = "vllm:request_inference_time_seconds_sum "
+	const inferCountPrefix = "vllm:request_inference_time_seconds_count "
+
 	var m metricsScrape
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -38,15 +45,14 @@ func scrapeMetrics(ctx context.Context, url string) (metricsScrape, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// We only care about four exact metric names (no labels).
 		switch {
-		case strings.HasPrefix(line, "vllm:request_queue_time_seconds_sum "):
+		case strings.HasPrefix(line, queueSumPrefix):
 			m.QueueTimeSum = parseValue(line)
-		case strings.HasPrefix(line, "vllm:request_queue_time_seconds_count "):
+		case strings.HasPrefix(line, queueCountPrefix):
 			m.QueueTimeCount = parseValue(line)
-		case strings.HasPrefix(line, "vllm:request_inference_time_seconds_sum "):
+		case strings.HasPrefix(line, inferSumPrefix):
 			m.InferTimeSum = parseValue(line)
-		case strings.HasPrefix(line, "vllm:request_inference_time_seconds_count "):
+		case strings.HasPrefix(line, inferCountPrefix):
 			m.InferTimeCount = parseValue(line)
 		}
 	}

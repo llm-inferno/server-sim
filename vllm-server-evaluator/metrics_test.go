@@ -25,7 +25,7 @@ vllm:request_inference_time_seconds_count 10
 	}))
 	defer srv.Close()
 
-	got, err := scrapeMetrics(context.Background(), srv.URL+"/metrics")
+	got, err := scrapeMetrics(context.Background(), srv.URL+"/metrics", "vllm:request_queue_time_seconds")
 	if err != nil {
 		t.Fatalf("scrapeMetrics: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestScrapeMetrics_HTTP500(t *testing.T) {
 		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-	if _, err := scrapeMetrics(context.Background(), srv.URL+"/metrics"); err == nil {
+	if _, err := scrapeMetrics(context.Background(), srv.URL+"/metrics", "vllm:request_queue_time_seconds"); err == nil {
 		t.Fatal("expected error for 500, got nil")
 	}
 }
