@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -186,6 +185,3 @@ func TestSolve_ServedModelMismatch(t *testing.T) {
 		t.Errorf("status = %d, want 400 (served-model mismatch), body=%s", rr.Code, rr.Body.String())
 	}
 }
-
-// silence unused imports in some build configs
-var _ = context.Background

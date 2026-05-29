@@ -68,7 +68,7 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 		}
 
 		// 2. Scrape /metrics at window start.
-		startScrape, err := scrapeMetrics(c.Request.Context(), baseURL+"/metrics")
+		startScrape, err := scrapeMetrics(c.Request.Context(), baseURL+"/metrics", sc.QueueTimeMetric)
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "scrape metrics: " + err.Error()})
 			return
@@ -96,7 +96,7 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 		res.ScrapeAtStart = startScrape
 
 		// 4. Scrape /metrics at window end.
-		endScrape, err := scrapeMetrics(c.Request.Context(), baseURL+"/metrics")
+		endScrape, err := scrapeMetrics(c.Request.Context(), baseURL+"/metrics", sc.QueueTimeMetric)
 		if err == nil {
 			res.ScrapeAtEnd = endScrape
 		}
