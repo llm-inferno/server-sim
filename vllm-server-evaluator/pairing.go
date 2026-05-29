@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 // readDownwardLabel reads a single value from a pod's downward-API volume.
@@ -75,9 +74,13 @@ type pairingState struct {
 const downwardLabelDir = "/etc/podinfo"
 
 // resolvePairing reads the downward-API labels and looks up the paired vLLM
-// pod. Returns a populated pairingState, or an error in unpaired/cold-start
-// conditions (caller should treat as 503-pending).
-func resolvePairing(ctx context.Context, port int) (*pairingState, error) {
+// pod using the provided K8s client. Returns a populated pairingState, or an
+// error in unpaired/cold-start conditions (caller should treat as 503-pending).
+func resolvePairing(ctx context.Context, client kubernetes.Interface, port int) (*pairingState, error) {
+	if client == nil {
+		return nil, fmt.Errorf("k8s client not available (not running in cluster)")
+	}
+
 	pairID, err := readDownwardLabel(downwardLabelDir, "pair-id")
 	if err != nil || pairID == "" {
 		return nil, fmt.Errorf("pair-id not present in downward labels: %v", err)
@@ -93,15 +96,6 @@ func resolvePairing(ctx context.Context, port int) (*pairingState, error) {
 	}
 	if ns == "" {
 		return nil, fmt.Errorf("VLLM_NAMESPACE and POD_NAMESPACE both unset")
-	}
-
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("in-cluster config: %w", err)
-	}
-	client, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("k8s client: %w", err)
 	}
 
 	ip, err := resolvePairedVLLM(ctx, client, ns, pairID)
