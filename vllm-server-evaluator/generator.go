@@ -16,12 +16,14 @@ import (
 )
 
 // completionsRequest mirrors vLLM's OpenAI-compatible /v1/completions body.
+// Prompt is sent as []int (token IDs) — the standard OpenAI way to pass
+// pre-tokenized input; vLLM v0.22+ dropped the non-standard prompt_token_ids field.
 type completionsRequest struct {
-	Model          string `json:"model"`
-	PromptTokenIDs []int  `json:"prompt_token_ids"`
-	MaxTokens      int    `json:"max_tokens"`
-	IgnoreEOS      bool   `json:"ignore_eos"`
-	Stream         bool   `json:"stream"`
+	Model     string `json:"model"`
+	Prompt    []int  `json:"prompt"`
+	MaxTokens int    `json:"max_tokens"`
+	IgnoreEOS bool   `json:"ignore_eos"`
+	Stream    bool   `json:"stream"`
 }
 
 // runOneRequest sends a single streaming /v1/completions request to the given
@@ -31,11 +33,11 @@ type completionsRequest struct {
 // vllmBaseURL is e.g. "http://10.0.0.1:8000".
 func runOneRequest(ctx context.Context, vllmBaseURL, model string, spec requestSpec, seed int64) sample {
 	body := completionsRequest{
-		Model:          model,
-		PromptTokenIDs: syntheticPromptTokens(spec.InputTokens, seed),
-		MaxTokens:      spec.OutputTokens,
-		IgnoreEOS:      spec.IgnoreEOS,
-		Stream:         true,
+		Model:     model,
+		Prompt:    syntheticPromptTokens(spec.InputTokens, seed),
+		MaxTokens: spec.OutputTokens,
+		IgnoreEOS: spec.IgnoreEOS,
+		Stream:    true,
 	}
 	buf, _ := json.Marshal(body)
 

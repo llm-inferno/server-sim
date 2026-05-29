@@ -29,7 +29,7 @@ func readDownwardLabel(dir, name string) (string, error) {
 // one match.
 func resolvePairedVLLM(ctx context.Context, c kubernetes.Interface, namespace, pairID string) (string, error) {
 	pods, err := c.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "inferno.server.pair-id=" + pairID,
+		LabelSelector: "inferno.server.pair-id=" + pairID + ",inferno.vllm.model",
 	})
 	if err != nil {
 		return "", fmt.Errorf("list pods in %s with pair-id=%s: %w", namespace, pairID, err)
