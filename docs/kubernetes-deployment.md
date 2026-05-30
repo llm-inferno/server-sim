@@ -69,6 +69,11 @@ kubectl apply -f deploy/k8s/pod-queue-analysis.yaml
 # BLIS (populate ConfigMap first)
 kubectl apply -f deploy/k8s/configmap-blis.yaml
 kubectl apply -f deploy/k8s/pod-blis.yaml
+
+# vllm-server (RBAC + ConfigMap required; vLLM pod must be paired by Actuator)
+kubectl apply -f deploy/k8s/rbac-vllm-server.yaml
+kubectl apply -f deploy/k8s/configmap-vllm-server.yaml
+kubectl apply -f deploy/k8s/pod-vllm-server.yaml
 ```
 
 ## ConfigMaps
@@ -108,7 +113,10 @@ Populate:
 | `MODEL_DATA_FILE` | `model-data.json` | queue-analysis only: path to model data |
 | `BLIS_CONFIG_FILE` | `blis-config.json` | blis only: path to BLIS config |
 | `HW_CONFIG_FILE` | `hardware_config.json` | blis only: path to hardware config |
-| `LATENCY_BACKEND` | `roofline` | blis only: `roofline`, `blackbox`, `crossmodel`, `trained-roofline` |
+| `LATENCY_BACKEND` | `roofline` | blis only: `roofline`, `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics` |
+| `VLLM_EVAL_CONFIG_FILE` | `vllm-eval-config.json` | vllm-server only: path to config file |
+| `POD_NAME`, `POD_NAMESPACE` | downward API | vllm-server only: identifies the evaluator's own pod |
+| `VLLM_NAMESPACE` | `POD_NAMESPACE` | vllm-server only: namespace of the paired vLLM Deployment |
 
 ## Pod Annotations
 

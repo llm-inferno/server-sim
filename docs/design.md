@@ -24,6 +24,7 @@ Consumer (REST client)
 | 1 | Dummy | Skeleton + hardcoded metrics. Validates the full async job flow. |
 | 2 | Analytical model | `queue-analysis-evaluator/` wraps [queue-analysis](https://github.com/llm-inferno/queue-analysis) as a Go library. Loads Alpha/Beta/Gamma from `model-data.json` (keyed by `acc`+`name`). MaxQueueSize defaults to 0 (`DEFAULT_MAX_QUEUE_SIZE`; 0 = no external queue). Noise enabled via `NOISE_ENABLED=true`. |
 | 3 | DES | `blis-evaluator/` wraps [inference-sim/BLIS](https://github.com/inference-sim/inference-sim) as a Go library. Loads KV/batch/hardware params from `blis-config.json` (keyed by `accelerator`+`model`). Latency backend controlled by `LATENCY_BACKEND` (default: `roofline`). |
+| 4 | vllm-server | `vllm-server-evaluator/` drives a real vLLM pod with open-loop Poisson traffic and reports measured TTFT/ITL/throughput. Requires K8s pod pairing via the control-loop Actuator. Config in `vllm-eval-config.json`. |
 
 ## Architecture
 
@@ -127,7 +128,8 @@ Request: `ProblemData` (same as above). Evaluator-specific parameters (e.g. Alph
 | `avgWaitTime` | float32 | Average queueing time (ms) |
 | `avgTTFT` | float32 | Average time-to-first-token (ms) |
 | `avgITL` | float32 | Average inter-token latency (ms) |
-| `maxRPS` | float32 | Maximum stable request rate |
+| `maxRPS` | float32 | Maximum stable request rate; populated where computable (bandwidth ceiling for BLIS, `MaxRate` for queue-analysis, 0 otherwise) |
+| `saturation` | string | Omitted when empty (not saturated). Values: `"bandwidth"` (decode memory bandwidth bottleneck), `"kv_capacity"` (KV cache exhausted), `"overloaded"` (generic). When set, latency metrics may be unreliable; noise is never applied. See [docs/saturation-detection.md](saturation-detection.md). |
 
 ## Configuration
 
@@ -148,10 +150,10 @@ server-sim/
   cmd/server-sim/main.go          # Entry point
   pkg/
     config/config.go               # Configuration loading
-    evaluator/types.go             # Shared API types (ProblemData, AnalysisData)
+    evaluator/types.go             # Shared API types (ProblemData, AnalysisData, saturation constants)
     evaluator/client.go            # HTTP client to evaluator /solve
     noise/noise.go                 # Gaussian noise injection
-    job/job.go                     # Async job manager (in-memory)
+    job/job.go                     # Async job manager (in-memory, TTL eviction)
     server/server.go               # Gin REST server
   dummy-evaluator/
     main.go                        # Standalone dummy evaluator service
@@ -162,11 +164,28 @@ server-sim/
   blis-evaluator/
     main.go                        # DES evaluator entry point
     config.go                      # blis-config.json loader
-    handler.go                     # POST /solve handler (inference-sim/BLIS library)
+    handler.go                     # POST /solve handler + saturation pre-check (inference-sim/BLIS)
+    saturation_test.go             # Saturation pre-check unit tests
     blis-config.json               # Sample config (accelerator+model → BLIS params)
+    hf-configs/                    # Bundled HuggingFace config.json files
+  vllm-server-evaluator/
+    main.go                        # vllm-server evaluator entry point
+    config.go                      # vllm-eval-config.json loader
+    pairing.go                     # K8s client: resolve paired vLLM pod via label
+    handler.go                     # POST /solve handler
+    generator.go                   # Poisson load driver, streaming TTFT/ITL collection
+    metrics.go                     # Prometheus scrape from vLLM /metrics
+    saturation.go                  # Runtime saturation detection
+    vllm-eval-config.json          # Sample config
+  deploy/k8s/                      # Kubernetes manifests (pods, ConfigMaps, RBAC)
   docs/
     design.md                      # This document
-  Dockerfile
+    saturation-detection.md        # Saturation semantics and per-evaluator behaviour
+    blis-overload-detection.md     # Analytical overload formulas for BLIS
+    vllm-server-evaluator.md       # vllm-server operational reference
+    kubernetes-deployment.md       # K8s deployment guide
+  Dockerfile.server-sim
+  Dockerfile.evaluator
   go.mod                           # github.com/llm-inferno/server-sim
 ```
 
@@ -180,4 +199,4 @@ server-sim/
 | Noise injection | server-sim layer, not evaluator | Backends stay clean; noise is a consumer concern |
 | HTTP framework | Gin | Consistent with all llm-inferno repos |
 | Module path | `github.com/llm-inferno/server-sim` | Follows org convention |
-| Pod labels (k8s) | Deferred to later phase | Core flow validated first |
+| K8s pod pairing (vllm-server) | Label-based, managed by control-loop Actuator | Keeps server-sim K8s-unaware; pair-id label written per-pod, discovered by evaluator via K8s API at runtime |
