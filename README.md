@@ -39,33 +39,7 @@ Four evaluator backends are available, each implementing the same `POST /solve` 
 
 ## Evaluator Interface
 
-All backends share the same REST contract:
-
-```mermaid
-flowchart LR
-    subgraph req["POST /solve  —  ProblemData"]
-        direction TB
-        r1["RPS · float32"]
-        r2["maxConcurrency · int"]
-        r3["avgInputTokens · float32"]
-        r4["avgOutputTokens · float32"]
-        r5["accelerator · string"]
-        r6["model · string"]
-    end
-
-    subgraph resp["200 OK  —  AnalysisData"]
-        direction TB
-        a1["throughput · float32  (req/s)"]
-        a2["avgRespTime · float32  (ms)"]
-        a3["avgWaitTime · float32  (ms)"]
-        a5["avgTTFT · float32  (ms)"]
-        a6["avgITL · float32  (ms)"]
-        a7["maxRPS · float32  (req/s)"]
-        a8["saturation · string  (omitted when empty)"]
-    end
-
-    req -->|"evaluator-specific\nparameters resolved\nfrom config file"| resp
-```
+All backends share the same REST contract: `POST /solve` accepts a `ProblemData` body (`RPS`, `maxConcurrency`, `avgInputTokens`, `avgOutputTokens`, `accelerator`, `model`) and returns `AnalysisData` (`throughput`, `avgRespTime`, `avgWaitTime`, `avgTTFT`, `avgITL`, `maxRPS`, `saturation`).
 
 Evaluator-specific parameters (latency coefficients, KV cache size, etc.) are never exposed in the request — each backend resolves them internally from its own config file keyed by `accelerator + model`.
 
