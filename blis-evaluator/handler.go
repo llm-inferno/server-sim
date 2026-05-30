@@ -78,7 +78,7 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 				*modelConfig, hwConfig,
 				pd.Model, entry.GPU, entry.TP, backend, entry.MaxModelLen,
 			),
-			PolicyConfig: blisSim.NewPolicyConfig("constant", entry.Scheduler),
+			PolicyConfig: blisSim.NewPolicyConfig(entry.Scheduler, "fcfs"),
 		}
 
 		// Pre-simulation saturation check: avoid running an expensive DES on
