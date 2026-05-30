@@ -28,7 +28,7 @@ flowchart TD
     Noise -->|store result| Jobs
 ```
 
-Three evaluator backends are available, each implementing the same `POST /solve` interface:
+Four evaluator backends are available, each implementing the same `POST /solve` interface:
 
 | Phase | Evaluator | Approach |
 |-------|-----------|----------|
@@ -367,3 +367,124 @@ huggingface-cli login
 huggingface-cli download <org>/<model-name> config.json \
   --local-dir blis-evaluator/hf-configs/<org>/<model-name>
 ```
+
+---
+
+## Phase 4: vllm-server Evaluator
+
+Unlike the other three backends, `vllm-server` is not a pure function of `ProblemData`. Every `/solve` call drives a **real vLLM server** with open-loop Poisson traffic and reports measured TTFT, ITL, throughput, and queue-time. It requires a vLLM pod paired 1:1 with the evaluator pod; pairing is established by the control-loop Actuator via labels and discovered via the K8s API.
+
+See [docs/vllm-server-evaluator.md](docs/vllm-server-evaluator.md) for the full operational reference.
+
+```mermaid
+flowchart TB
+    PD["ProblemData\n──────────\nRPS\navgInputTokens\navgOutputTokens\naccelerator · model"]
+
+    subgraph ve["vllm-server-evaluator"]
+        direction TB
+        Config["vllm-eval-config.json\n──────────\nacc | model → warmupSec\n  windowSec · targetSamples\n  vllmServedModelName"]
+        Pairing["pairing.go\n──────────\nreads pair-id from downward API\nresolves vLLM pod IP via K8s API"]
+        Generator["generator.go\n──────────\nPoisson scheduler @ RPS\nstreaming POST /v1/completions\nmeasures TTFT · ITL · e2e"]
+        Metrics["metrics.go\n──────────\nscrapes vLLM /metrics\nvllm:request_queue_time_seconds"]
+        Sat["saturation.go\n──────────\nTTFT trend · queue dominance\nerror rate"]
+
+        Config --> Generator
+        Pairing --> Generator
+        Generator --> Sat
+        Metrics --> Sat
+    end
+
+    vLLM["Paired vLLM pod\n──────────\nPOST /v1/completions\nGET  /metrics"]
+
+    PD -->|POST /solve| Config
+    Generator -->|synthetic prompts| vLLM
+    vLLM -->|SSE chunks| Generator
+    vLLM -->|Prometheus| Metrics
+    Sat --> AD["AnalysisData\n──────────\nthroughput · avgRespTime\navgTTFT · avgITL\navgWaitTime · saturation"]
+```
+
+### Prerequisites
+
+- A Kubernetes cluster with the evaluator deployed in-cluster (uses ServiceAccount credentials).
+- A vLLM pod in the same (or a reachable) namespace.
+- The control-loop Actuator has labeled both pods with a matching `inferno.server.pair-id=<uuid>` (see [Pairing](#pairing)).
+- RBAC allowing `get/list/watch` on pods in the vLLM namespace (see `deploy/k8s/rbac-vllm-server.yaml`).
+
+### Test Run
+
+**Step 1 — apply RBAC and config** (once per cluster):
+
+```bash
+kubectl apply -f deploy/k8s/rbac-vllm-server.yaml
+kubectl apply -f deploy/k8s/configmap-vllm-server.yaml
+```
+
+**Step 2 — deploy the evaluator pod** (terminal 1):
+
+```bash
+kubectl apply -f deploy/k8s/pod-vllm-server.yaml
+kubectl port-forward pod/server-sim-vllm-server 8080:8080
+```
+
+The evaluator starts in "unpaired" state and `/solve` returns `503` until the Actuator (or a manual label) establishes the `pair-id` binding. For local iteration, manually label both pods:
+
+```bash
+kubectl label pod <managed-pod>  inferno.server.pair-id=dev-pair-1 inferno.server.vllm-deployment=<vllm-deployment>
+kubectl label pod <vllm-pod>     inferno.server.pair-id=dev-pair-1
+```
+
+**Step 3 — submit and poll** (terminal 2):
+
+```bash
+curl -s -X POST http://localhost:8080/simulate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "RPS": 5.0,
+    "avgInputTokens": 512,
+    "avgOutputTokens": 128,
+    "accelerator": "H100",
+    "model": "ibm-granite/granite-3.1-8b-instruct"
+  }'
+# → {"jobID":"<uuid>"}
+
+# Poll — measurement window runs for warmupSec + max(minWindowSec, targetSamples/RPS)
+curl -s http://localhost:8080/simulate/<uuid>
+# → {"status":"completed","result":{"throughput":4.9,"avgTTFT":38.4,"avgITL":11.2,...}}
+```
+
+> **Note:** If the vLLM is not yet paired or not Ready, polling returns `"status":"failed"` with `"error":"vllm pairing not ready"`. The Collector retries on the next cycle; manual clients should retry after the pairing is established.
+>
+> **Saturation:** Three runtime signals trigger `"saturation":"overloaded"`: TTFT linear-regression growth >50% across the window, queue time exceeding inference time, or ≥5% request error rate. `maxRPS` is always `0` for this backend (no capacity sweep is performed).
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VLLM_EVAL_CONFIG_FILE` | `vllm-eval-config.json` | Path to config file |
+| `POD_NAME`, `POD_NAMESPACE` | downward API | Identifies the evaluator's own pod |
+| `VLLM_NAMESPACE` | `POD_NAMESPACE` | Namespace of the paired vLLM Deployment |
+| `EVALUATOR_PORT` | `8081` | vllm-server-evaluator listen port |
+
+### vllm-eval-config.json schema
+
+Each entry in the `configs` array configures one `accelerator + model` pair:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `accelerator` | ✓ | Accelerator name (matched against request) |
+| `model` | ✓ | Model name (matched against request) |
+| `vllmPort` | ✓ | vLLM container port; must be the same across all entries (one vLLM pod per evaluator pod) |
+| `warmupSec` | ✓ | Seconds of traffic discarded at window start to let the vLLM reach steady state |
+| `minWindowSec` | ✓ | Minimum measurement window duration (seconds) |
+| `maxWindowSec` | ✓ | Hard cap on measurement window (seconds); window ends even if `targetSamples` not reached |
+| `targetSamples` | ✓ | Desired number of completed requests in the window |
+| `minSamples` | ✓ | If fewer than this many samples are collected by `maxWindowSec`, `/solve` returns 500 |
+| `vllmServedModelName` | | Value of vLLM's `--served-model-name`; defaults to `model` |
+| `ignoreEOS` | | Passed to vLLM as `ignore_eos`; keeps output length fixed (default: `false`) |
+| `queueTimeMetric` | | Prometheus metric name for queue time (default: `vllm:request_queue_time_seconds`) |
+
+### Pairing
+
+The Actuator establishes pairing by writing `inferno.server.pair-id=<uuid>` on exactly one managed pod and one vLLM pod. The evaluator reads its own `pair-id` from a downward-API volume at `/etc/podinfo/labels`, then queries the K8s API to find the matching vLLM pod. If the label is absent or no Ready vLLM pod matches, `/solve` returns `503`.
+
+The full Actuator contract (replica lockstep, label ordering, reconciliation on pod replacement) is documented in [docs/vllm-server-evaluator.md](docs/vllm-server-evaluator.md#pairing--actuator-contract).
