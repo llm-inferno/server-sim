@@ -30,6 +30,17 @@ Actuator** via labels and discovered by the evaluator via the K8s API.
 | `minSamples` | below this, `/solve` returns 500 with insufficient-samples |
 | `ignoreEOS` | passed through to vLLM |
 | `queueTimeMetric` | name of the queue-time histogram metric (used in scrape) |
+| `inputTokenDistribution` | per-request prompt length distribution; mean = `ProblemData.AvgInputTokens` (default: `fixed`) |
+| `outputTokenDistribution` | per-request output length distribution; mean = `ProblemData.AvgOutputTokens` (default: `fixed`) |
+
+Supported distribution kinds (apply to both `inputTokenDistribution` and `outputTokenDistribution`; all draw integers ≥ 1, and any `avg == 1` collapses to a constant `1`):
+
+| Kind | Sampling rule |
+|---|---|
+| `fixed` (default) | constant `avg` |
+| `geometric` | geometric with success probability `1/avg`, truncated at `10*avg` |
+| `uniform` | discrete uniform on `[1, 2*avg - 1]` |
+| `uniform-bounded` | discrete uniform on `[avg/2, (3*avg + 1)/2]` |
 
 ## Environment variables
 

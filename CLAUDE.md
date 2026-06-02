@@ -22,7 +22,12 @@ cd blis-evaluator && BLIS_CONFIG_FILE=blis-config.json HW_CONFIG_FILE=/path/to/h
 VLLM_EVAL_CONFIG_FILE=vllm-server-evaluator/vllm-eval-config.json go run ./vllm-server-evaluator
 ```
 
-There are no tests (`*_test.go` files) in this repo yet.
+Run tests:
+```bash
+go test ./...
+```
+
+Tests live alongside the code they cover (currently `vllm-server-evaluator/*_test.go`); other packages don't have tests yet.
 
 ## Architecture
 

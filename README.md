@@ -456,6 +456,8 @@ Each entry in the `configs` array configures one `accelerator + model` pair:
 | `vllmServedModelName` | | Value of vLLM's `--served-model-name`; defaults to `model` |
 | `ignoreEOS` | | Passed to vLLM as `ignore_eos`; keeps output length fixed (default: `false`) |
 | `queueTimeMetric` | | Prometheus metric name for queue time (default: `vllm:request_queue_time_seconds`) |
+| `inputTokenDistribution` | | Per-request prompt length distribution; mean = `avgInputTokens`. One of `fixed` (default), `geometric`, `uniform`, `uniform-bounded` — see [docs/vllm-server-evaluator.md](docs/vllm-server-evaluator.md#configuration) |
+| `outputTokenDistribution` | | Per-request output length distribution; mean = `avgOutputTokens`. Same kinds as above (default: `fixed`) |
 
 ### Pairing
 
