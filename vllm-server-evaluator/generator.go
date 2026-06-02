@@ -107,17 +107,22 @@ func timeSince(start, t time.Time) time.Duration {
 }
 
 // windowParams configures one measurement window.
+//
+// InputSampler / OutputSampler are called per Poisson arrival to draw the
+// per-request token counts. IgnoreEOS is fixed for the whole window.
 type windowParams struct {
-	BaseURL       string
-	Model         string
-	Spec          requestSpec
-	RPS           float64
-	WarmupSec     int
-	MinWindowSec  int
-	MaxWindowSec  int
-	TargetSamples int
-	Concurrency   int
-	Seed          int64
+	BaseURL        string
+	Model          string
+	InputSampler   tokenSampler
+	OutputSampler  tokenSampler
+	IgnoreEOS      bool
+	RPS            float64
+	WarmupSec      int
+	MinWindowSec   int
+	MaxWindowSec   int
+	TargetSamples  int
+	Concurrency    int
+	Seed           int64
 }
 
 // runWindow drives a Poisson stream of requests at wp.RPS for
@@ -138,8 +143,20 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 	if wp.Seed == 0 {
 		wp.Seed = time.Now().UnixNano()
 	}
+	if wp.InputSampler == nil || wp.OutputSampler == nil {
+		return nil, fmt.Errorf("runWindow: InputSampler and OutputSampler are required")
+	}
 
-	rng := rand.New(rand.NewSource(wp.Seed))
+	// Three independent RNG streams derived from a single master seed
+	// (common random numbers): two runs with the same Seed but different
+	// distribution config share arrival timings and unaffected token
+	// sequences. arrivalsRNG drives Poisson gaps; inputRNG drives the input
+	// token sample and the per-request prompt-content seed; outputRNG
+	// drives the output token sample.
+	master := rand.New(rand.NewSource(wp.Seed))
+	arrivalsRNG := rand.New(rand.NewSource(master.Int63()))
+	inputRNG := rand.New(rand.NewSource(master.Int63()))
+	outputRNG := rand.New(rand.NewSource(master.Int63()))
 
 	// Compute window length.
 	target := float64(wp.TargetSamples) / wp.RPS
@@ -161,7 +178,7 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 
 	// Poisson interarrival: exponential with mean 1/RPS.
 	for {
-		gap := time.Duration(rng.ExpFloat64() / wp.RPS * float64(time.Second))
+		gap := time.Duration(arrivalsRNG.ExpFloat64() / wp.RPS * float64(time.Second))
 		select {
 		case <-time.After(gap):
 		case <-deadlineCh:
@@ -178,6 +195,16 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 			break
 		}
 
+		// Draw this request's input/output counts and prompt seed BEFORE the
+		// concurrency check so dropped arrivals still consume RNG state and
+		// the streams stay aligned across runs with identical seeds.
+		spec := requestSpec{
+			InputTokens:  wp.InputSampler.Sample(inputRNG),
+			OutputTokens: wp.OutputSampler.Sample(outputRNG),
+			IgnoreEOS:    wp.IgnoreEOS,
+		}
+		promptSeed := inputRNG.Int63()
+
 		// Try to acquire concurrency slot; drop if full.
 		select {
 		case sem <- struct{}{}:
@@ -187,12 +214,11 @@ func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 
 		startedAt := time.Now()
 		isWarmup := startedAt.Before(windowStart)
-		seed := rng.Int63()
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			s := runOneRequest(ctx, wp.BaseURL, wp.Model, wp.Spec, seed)
+			s := runOneRequest(ctx, wp.BaseURL, wp.Model, spec, promptSeed)
 			s.StartedAt = startedAt
 			mu.Lock()
 			defer mu.Unlock()

@@ -8,17 +8,19 @@ import (
 
 // configEntry is one entry in vllm-eval-config.json.
 type configEntry struct {
-	Accelerator         string `json:"accelerator"`
-	Model               string `json:"model"`
-	VLLMServedModelName string `json:"vllmServedModelName"`
-	VLLMPort            int    `json:"vllmPort"`
-	WarmupSec           int    `json:"warmupSec"`
-	MinWindowSec        int    `json:"minWindowSec"`
-	MaxWindowSec        int    `json:"maxWindowSec"`
-	TargetSamples       int    `json:"targetSamples"`
-	MinSamples          int    `json:"minSamples"`
-	IgnoreEOS           bool   `json:"ignoreEOS"`
-	QueueTimeMetric     string `json:"queueTimeMetric"`
+	Accelerator             string `json:"accelerator"`
+	Model                   string `json:"model"`
+	VLLMServedModelName     string `json:"vllmServedModelName"`
+	VLLMPort                int    `json:"vllmPort"`
+	WarmupSec               int    `json:"warmupSec"`
+	MinWindowSec            int    `json:"minWindowSec"`
+	MaxWindowSec            int    `json:"maxWindowSec"`
+	TargetSamples           int    `json:"targetSamples"`
+	MinSamples              int    `json:"minSamples"`
+	IgnoreEOS               bool   `json:"ignoreEOS"`
+	QueueTimeMetric         string `json:"queueTimeMetric"`
+	InputTokenDistribution  string `json:"inputTokenDistribution"`
+	OutputTokenDistribution string `json:"outputTokenDistribution"`
 }
 
 // configFile is the top-level structure of vllm-eval-config.json.
@@ -29,15 +31,17 @@ type configFile struct {
 // serverConfig is the validated, lookup-ready measurement policy for one
 // (accelerator, model) pair.
 type serverConfig struct {
-	VLLMServedModelName string
-	VLLMPort            int
-	WarmupSec           int
-	MinWindowSec        int
-	MaxWindowSec        int
-	TargetSamples       int
-	MinSamples          int
-	IgnoreEOS           bool
-	QueueTimeMetric     string
+	VLLMServedModelName     string
+	VLLMPort                int
+	WarmupSec               int
+	MinWindowSec            int
+	MaxWindowSec            int
+	TargetSamples           int
+	MinSamples              int
+	IgnoreEOS               bool
+	QueueTimeMetric         string
+	InputTokenDistribution  string // "" defaults to "fixed"
+	OutputTokenDistribution string // "" defaults to "fixed"
 }
 
 // loadConfig reads vllm-eval-config.json from VLLM_EVAL_CONFIG_FILE
@@ -67,16 +71,26 @@ func loadConfig() (map[string]serverConfig, error) {
 		if served == "" {
 			served = e.Model
 		}
+		// Validate distribution strings up front so misconfiguration fails at
+		// startup rather than mid-run; sample with avg=2 (any avg ≥ 2 works).
+		if _, err := newSampler(e.InputTokenDistribution, 2); err != nil {
+			return nil, fmt.Errorf("config %s/%s: inputTokenDistribution: %w", e.Accelerator, e.Model, err)
+		}
+		if _, err := newSampler(e.OutputTokenDistribution, 2); err != nil {
+			return nil, fmt.Errorf("config %s/%s: outputTokenDistribution: %w", e.Accelerator, e.Model, err)
+		}
 		lookup[e.Accelerator+"|"+e.Model] = serverConfig{
-			VLLMServedModelName: served,
-			VLLMPort:            e.VLLMPort,
-			WarmupSec:           e.WarmupSec,
-			MinWindowSec:        e.MinWindowSec,
-			MaxWindowSec:        e.MaxWindowSec,
-			TargetSamples:       e.TargetSamples,
-			MinSamples:          e.MinSamples,
-			IgnoreEOS:           e.IgnoreEOS,
-			QueueTimeMetric:     e.QueueTimeMetric,
+			VLLMServedModelName:     served,
+			VLLMPort:                e.VLLMPort,
+			WarmupSec:               e.WarmupSec,
+			MinWindowSec:            e.MinWindowSec,
+			MaxWindowSec:            e.MaxWindowSec,
+			TargetSamples:           e.TargetSamples,
+			MinSamples:              e.MinSamples,
+			IgnoreEOS:               e.IgnoreEOS,
+			QueueTimeMetric:         e.QueueTimeMetric,
+			InputTokenDistribution:  e.InputTokenDistribution,
+			OutputTokenDistribution: e.OutputTokenDistribution,
 		}
 	}
 	return lookup, nil

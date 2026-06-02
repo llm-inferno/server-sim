@@ -74,11 +74,26 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 			return
 		}
 
-		// 3. Run the measurement window.
+		// 3. Build per-request token samplers from the configured
+		//    distribution kinds and request averages.
+		inSampler, err := newSampler(sc.InputTokenDistribution, int(pd.AvgInputTokens))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "input sampler: " + err.Error()})
+			return
+		}
+		outSampler, err := newSampler(sc.OutputTokenDistribution, int(pd.AvgOutputTokens))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "output sampler: " + err.Error()})
+			return
+		}
+
+		// 4. Run the measurement window.
 		wp := windowParams{
 			BaseURL:       baseURL,
 			Model:         sc.VLLMServedModelName,
-			Spec:          requestSpec{InputTokens: int(pd.AvgInputTokens), OutputTokens: int(pd.AvgOutputTokens), IgnoreEOS: sc.IgnoreEOS},
+			InputSampler:  inSampler,
+			OutputSampler: outSampler,
+			IgnoreEOS:     sc.IgnoreEOS,
 			RPS:           float64(pd.RPS),
 			WarmupSec:     sc.WarmupSec,
 			MinWindowSec:  sc.MinWindowSec,
@@ -95,13 +110,13 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 		}
 		res.ScrapeAtStart = startScrape
 
-		// 4. Scrape /metrics at window end.
+		// 5. Scrape /metrics at window end.
 		endScrape, err := scrapeMetrics(c.Request.Context(), baseURL+"/metrics", sc.QueueTimeMetric)
 		if err == nil {
 			res.ScrapeAtEnd = endScrape
 		}
 
-		// 5. Insufficient-samples guard.
+		// 6. Insufficient-samples guard.
 		completed := 0
 		for _, s := range res.Samples {
 			if !s.Failed {
@@ -115,7 +130,7 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 			return
 		}
 
-		// 6. Aggregate + saturation.
+		// 7. Aggregate + saturation.
 		ad := aggregate(*res, pd.RPS)
 		ad.Saturation = detectSaturation(*res, sc.MinSamples)
 
