@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/llm-inferno/server-sim/pkg/evaluator"
 )
+
+// roundTokenAvg rejects NaN/Inf and values < 1, otherwise rounds to the
+// nearest int (≥ 1). Sampler construction would silently degrade a fractional
+// or negative avg into a degenerate workload, masking upstream scale or unit
+// bugs in the request — refuse it at the boundary instead.
+func roundTokenAvg(name string, v float32) (int, error) {
+	f := float64(v)
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, fmt.Errorf("%s must be finite, got %v", name, v)
+	}
+	if f < 1 {
+		return 0, fmt.Errorf("%s must be >= 1, got %v", name, v)
+	}
+	return int(math.Round(f)), nil
+}
 
 // handlerState is the shared state injected into solveHandler.
 type handlerState struct {
@@ -76,12 +92,23 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 
 		// 3. Build per-request token samplers from the configured
 		//    distribution kinds and request averages.
-		inSampler, err := newSampler(sc.InputTokenDistribution, int(pd.AvgInputTokens))
+		inAvg, err := roundTokenAvg("avgInputTokens", pd.AvgInputTokens)
 		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		outAvg, err := roundTokenAvg("avgOutputTokens", pd.AvgOutputTokens)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		inSampler, err := newSampler(sc.InputTokenDistribution, inAvg)
+		if err != nil {
+			// kind was validated at config load; an error here means a programming bug.
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "input sampler: " + err.Error()})
 			return
 		}
-		outSampler, err := newSampler(sc.OutputTokenDistribution, int(pd.AvgOutputTokens))
+		outSampler, err := newSampler(sc.OutputTokenDistribution, outAvg)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "output sampler: " + err.Error()})
 			return

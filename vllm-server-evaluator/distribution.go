@@ -38,20 +38,17 @@ func (g geometricSampler) Sample(rng *rand.Rand) int {
 	return n
 }
 
+// uniformSampler draws from a discrete uniform on [lo, hi]. Both the
+// "uniform" and "uniform-bounded" config kinds construct this type with
+// different lo/hi derivations.
 type uniformSampler struct{ lo, hi int }
 
 func (u uniformSampler) Sample(rng *rand.Rand) int {
 	return u.lo + rng.Intn(u.hi-u.lo+1)
 }
 
-type uniformBoundedSampler struct{ lo, hi int }
-
-func (u uniformBoundedSampler) Sample(rng *rand.Rand) int {
-	return u.lo + rng.Intn(u.hi-u.lo+1)
-}
-
 // newSampler validates kind and constructs the sampler for the given average.
-// avg is clamped to ≥ 1; avg == 1 collapses every kind to fixed{1}.
+// avg must be ≥ 1; avg == 1 collapses every kind to fixed{1}.
 func newSampler(kind string, avg int) (tokenSampler, error) {
 	k := strings.ToLower(strings.TrimSpace(kind))
 	switch k {
@@ -61,7 +58,7 @@ func newSampler(kind string, avg int) (tokenSampler, error) {
 	}
 
 	if avg < 1 {
-		avg = 1
+		return nil, fmt.Errorf("token distribution avg must be >= 1, got %d", avg)
 	}
 	if avg == 1 {
 		return fixedSampler{v: 1}, nil
@@ -75,12 +72,8 @@ func newSampler(kind string, avg int) (tokenSampler, error) {
 	case "uniform":
 		return uniformSampler{lo: 1, hi: 2*avg - 1}, nil
 	case "uniform-bounded":
-		lo := avg / 2
-		if lo < 1 {
-			lo = 1
-		}
-		hi := (3*avg + 1) / 2 // ceil(3*avg/2)
-		return uniformBoundedSampler{lo: lo, hi: hi}, nil
+		// avg ≥ 2 here, so avg/2 ≥ 1 — no further lower-bound clamp needed.
+		return uniformSampler{lo: avg / 2, hi: (3*avg + 1) / 2}, nil
 	}
 	return nil, fmt.Errorf("unreachable") // exhaustive switch above
 }

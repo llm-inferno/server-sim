@@ -139,12 +139,12 @@ windowParams { …, InputSampler, OutputSampler }   ← replaces Spec
         ▼
 runWindow ── derives arrivalsRNG / inputRNG / outputRNG from wp.Seed
           ── per Poisson arrival (gap from arrivalsRNG):
-              promptSeed := inputRNG.Int63()
               spec := requestSpec{
                   InputTokens:  InputSampler.Sample(inputRNG),
                   OutputTokens: OutputSampler.Sample(outputRNG),
                   IgnoreEOS:    sc.IgnoreEOS,
               }
+              promptSeed := inputRNG.Int63()
               go runOneRequest(..., spec, promptSeed)
 ```
 

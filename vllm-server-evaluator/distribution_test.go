@@ -49,21 +49,45 @@ func TestFixedSampler_DefaultEmptyKind(t *testing.T) {
 	}
 }
 
-func TestGeometricSampler_MeanAndBounds(t *testing.T) {
+func TestGeometricSampler_Mean(t *testing.T) {
+	// Mean is the testable property at production-shape parameters: with
+	// hi = 10*avg the truncation tail is ~e^-10, so empirical mean is
+	// indistinguishable from the untruncated value within tolerance.
 	const avg = 16
 	s, err := newSampler("geometric", avg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mean, lo, hi := empiricalStats(t, s, 20_000, 42)
+	mean, lo, _ := empiricalStats(t, s, 20_000, 42)
 	if math.Abs(mean-float64(avg)) > 1.0 {
 		t.Errorf("geometric mean = %v, want ~%d (within 1.0)", mean, avg)
 	}
 	if lo < 1 {
 		t.Errorf("geometric lo = %d, want ≥ 1", lo)
 	}
-	if hi > 10*avg {
-		t.Errorf("geometric hi = %d, want ≤ %d", hi, 10*avg)
+}
+
+// TestGeometricSampler_RespectsCap exercises the upper-bound clamp directly.
+// At p=0.5, hi=3, P(unclamped X > 3) = 0.5^3 = 12.5%, so the cap is hit
+// frequently enough to verify both that clamped samples never exceed hi and
+// that the clamp is reached often enough to be meaningfully tested.
+func TestGeometricSampler_RespectsCap(t *testing.T) {
+	s := geometricSampler{p: 0.5, hi: 3}
+	rng := rand.New(rand.NewSource(1))
+	const N = 10_000
+	capHits := 0
+	for i := 0; i < N; i++ {
+		v := s.Sample(rng)
+		if v < 1 || v > 3 {
+			t.Fatalf("sample = %d, want in [1,3]", v)
+		}
+		if v == 3 {
+			capHits++
+		}
+	}
+	// True P(X >= 3) at p=0.5 is 0.25 → expect ~2500 hits at v=3.
+	if capHits < 1000 {
+		t.Errorf("cap hits = %d in %d draws; expected ~2500. Truncation may not be exercised.", capHits, N)
 	}
 }
 
