@@ -57,11 +57,36 @@ Edge cases:
 
 ### Sampling and reproducibility
 
-Samples are drawn **per request** at arrival time inside `runWindow`, using the
-existing window RNG (`wp.Seed`). With a fixed seed, a run remains
-deterministic. Input and output draws are independent; they pull two values
-from the same RNG in a defined order (input first, then output) so the seed
-fully determines the sequence.
+Samples are drawn **per request** at arrival time inside `runWindow`. The
+window's master seed (`wp.Seed`) is used to derive **three independent RNG
+streams** — one each for arrivals, input-side draws, and output-side draws:
+
+```
+master := rand.New(rand.NewSource(wp.Seed))
+arrivalsRNG := rand.New(rand.NewSource(master.Int63()))
+inputRNG    := rand.New(rand.NewSource(master.Int63()))
+outputRNG   := rand.New(rand.NewSource(master.Int63()))
+```
+
+- `arrivalsRNG` — Poisson interarrival gaps (`ExpFloat64()`).
+- `inputRNG` — input token-count sample, plus the per-request seed used by
+  `syntheticPromptTokens` for prompt content (both are input-side concerns).
+- `outputRNG` — output token-count sample.
+
+This is the **common random numbers (CRN)** idiom from simulation: two runs
+with the same `wp.Seed` but different distribution config see the same
+arrival times and the same input sequence, differing *only* where the
+treatment differs. That isolates the effect under study from incidental
+RNG-state shifts and makes A/B comparisons clean.
+
+A single shared RNG would entangle these streams: changing the output
+distribution would shift the RNG state cumulatively, perturbing every
+subsequent arrival gap and input draw. With three streams that's impossible
+by construction. The current code already uses one `*rand.Rand` for both
+gaps and per-request seed generation, so this split also untangles a
+pre-existing entanglement.
+
+A fixed `wp.Seed` keeps the entire run deterministic.
 
 ## Architecture
 
@@ -76,8 +101,9 @@ fully determines the sequence.
 - `vllm-server-evaluator/distribution.go` *(new)* — `tokenSampler` interface
   and the four concrete implementations. Pure functions of an `*rand.Rand`.
 - `vllm-server-evaluator/generator.go` — `windowParams` carries an input
-  sampler and an output sampler instead of a single fixed `Spec`. Each Poisson
-  arrival in `runWindow` calls both samplers to build a fresh `requestSpec`.
+  sampler and an output sampler instead of a single fixed `Spec`. `runWindow`
+  derives three RNGs from `wp.Seed` (arrivals / input / output) and uses them
+  for the corresponding draws on each Poisson arrival.
 - `vllm-server-evaluator/handler.go` — wires the configured distribution
   strings + averages into samplers and passes them into `windowParams`.
 
@@ -111,13 +137,15 @@ handler.go ── looks up serverConfig for (acc, model)
 windowParams { …, InputSampler, OutputSampler }   ← replaces Spec
         │
         ▼
-runWindow ── per Poisson arrival:
+runWindow ── derives arrivalsRNG / inputRNG / outputRNG from wp.Seed
+          ── per Poisson arrival (gap from arrivalsRNG):
+              promptSeed := inputRNG.Int63()
               spec := requestSpec{
-                  InputTokens:  InputSampler.Sample(rng),
-                  OutputTokens: OutputSampler.Sample(rng),
+                  InputTokens:  InputSampler.Sample(inputRNG),
+                  OutputTokens: OutputSampler.Sample(outputRNG),
                   IgnoreEOS:    sc.IgnoreEOS,
               }
-              go runOneRequest(..., spec, seed)
+              go runOneRequest(..., spec, promptSeed)
 ```
 
 `runOneRequest` is unchanged — it already takes a `requestSpec`.
@@ -141,7 +169,10 @@ Updates to existing tests:
 - `config_test.go` — round-trip the two new fields; verify default-to-`"fixed"`.
 - `handler_test.go` — confirm a non-`fixed` config produces variable token
   counts in the sampled requests (mock-friendly via the existing test seams).
-- `generator_test.go` — `runWindow` accepts samplers; samples vary per request.
+- `generator_test.go` — `runWindow` accepts samplers; samples vary per request;
+  with the same `wp.Seed`, two runs that differ *only* in `OutputSampler`
+  produce identical arrival timings and identical input token sequences
+  (CRN property check).
 
 ## Out of scope
 
