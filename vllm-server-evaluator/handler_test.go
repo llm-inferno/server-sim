@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,6 +154,68 @@ func TestSolve_UnknownModel(t *testing.T) {
 	r.ServeHTTP(rr, req)
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rr.Code)
+	}
+}
+
+func TestRoundTokenAvg(t *testing.T) {
+	cases := []struct {
+		name    string
+		v       float32
+		want    int
+		wantErr bool
+	}{
+		{"integer", 8, 8, false},
+		{"rounds-up", 7.6, 8, false},
+		{"rounds-down", 7.4, 7, false},
+		{"exactly-one", 1, 1, false},
+		{"sub-one", 0.7, 0, true},
+		{"zero", 0, 0, true},
+		{"negative", -3, 0, true},
+		{"nan", float32(math.NaN()), 0, true},
+		{"+inf", float32(math.Inf(1)), 0, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := roundTokenAvg("x", c.v)
+			if c.wantErr {
+				if err == nil {
+					t.Errorf("v=%v: expected error, got %d", c.v, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("v=%v: unexpected error: %v", c.v, err)
+			}
+			if got != c.want {
+				t.Errorf("v=%v: got %d, want %d", c.v, got, c.want)
+			}
+		})
+	}
+}
+
+func TestSolve_RejectsSubOneAvgInputTokens(t *testing.T) {
+	srv, _ := newFullFakeVLLM(t, "test-model", 1, time.Millisecond, time.Millisecond)
+	r := gin.New()
+	cfg := map[string]serverConfig{
+		"H100|test-model": {
+			VLLMServedModelName: "test-model",
+			MinWindowSec:        1, MaxWindowSec: 2, TargetSamples: 5, MinSamples: 1,
+			IgnoreEOS: true, QueueTimeMetric: "vllm:request_queue_time_seconds",
+		},
+	}
+	state := &handlerState{Lookup: cfg, BaseURLOverride: srv.URL}
+	state.Pairing.Store(&pairingState{VLLMPodIP: strings.TrimPrefix(srv.URL, "http://")})
+	r.POST("/solve", solveHandler(state))
+
+	body, _ := json.Marshal(evaluator.ProblemData{
+		RPS: 10, AvgInputTokens: 0.7, AvgOutputTokens: 4,
+		Accelerator: "H100", Model: "test-model",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/solve", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for fractional avgInputTokens", rr.Code)
 	}
 }
 
