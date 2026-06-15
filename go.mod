@@ -6,7 +6,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/inference-sim/inference-sim v0.7.13
-	github.com/llm-inferno/queue-analysis v0.7.0
+	github.com/llm-inferno/queue-analysis v0.8.0
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
