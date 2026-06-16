@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/llm-inferno/server-sim/pkg/evaluator"
 )
 
 // completionsRequest mirrors vLLM's OpenAI-compatible /v1/completions body.
@@ -111,18 +113,18 @@ func timeSince(start, t time.Time) time.Duration {
 // InputSampler / OutputSampler are called per Poisson arrival to draw the
 // per-request token counts. IgnoreEOS is fixed for the whole window.
 type windowParams struct {
-	BaseURL        string
-	Model          string
-	InputSampler   tokenSampler
-	OutputSampler  tokenSampler
-	IgnoreEOS      bool
-	RPS            float64
-	WarmupSec      int
-	MinWindowSec   int
-	MaxWindowSec   int
-	TargetSamples  int
-	Concurrency    int
-	Seed           int64
+	BaseURL       string
+	Model         string
+	InputSampler  tokenSampler
+	OutputSampler tokenSampler
+	IgnoreEOS     bool
+	RPS           float64
+	WarmupSec     int
+	MinWindowSec  int
+	MaxWindowSec  int
+	TargetSamples int
+	Concurrency   int
+	Seed          int64
 }
 
 // runWindow drives a Poisson stream of requests at wp.RPS for
@@ -132,13 +134,16 @@ type windowParams struct {
 // Concurrency limits the number of simultaneous in-flight requests; arrivals
 // that would exceed it are simply dropped from this driver (mimicking real
 // load that vLLM would queue itself — the per-request sample includes vLLM's
-// own queue time).
+// own queue time). A non-positive value falls back to
+// evaluator.DefaultMaxConcurrency.
 func runWindow(ctx context.Context, wp windowParams) (*windowResult, error) {
 	if wp.RPS <= 0 {
 		return nil, fmt.Errorf("non-positive RPS: %v", wp.RPS)
 	}
 	if wp.Concurrency <= 0 {
-		wp.Concurrency = 64
+		// Defensive backstop for direct callers; the handler normally resolves a
+		// positive value via evaluator.ResolveMaxConcurrency before calling.
+		wp.Concurrency = evaluator.DefaultMaxConcurrency
 	}
 	if wp.Seed == 0 {
 		wp.Seed = time.Now().UnixNano()

@@ -126,7 +126,9 @@ func solveHandler(st *handlerState) gin.HandlerFunc {
 			MinWindowSec:  sc.MinWindowSec,
 			MaxWindowSec:  sc.MaxWindowSec,
 			TargetSamples: sc.TargetSamples,
-			Concurrency:   pd.MaxConcurrency, // 0 → default 64 inside runWindow
+			// Request value wins; else the configured per-model default; else the
+			// shared backstop (logged). See evaluator.ResolveMaxConcurrency.
+			Concurrency: evaluator.ResolveMaxConcurrency(pd.MaxConcurrency, sc.DefaultConcurrency, "vllm-server"),
 		}
 		ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(sc.WarmupSec+sc.MaxWindowSec+10)*time.Second)
 		defer cancel()

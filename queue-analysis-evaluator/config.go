@@ -70,6 +70,11 @@ func loadConfig() (map[string]serverConfig, error) {
 
 	lookup := make(map[string]serverConfig, len(md.Models))
 	for _, m := range md.Models {
+		// 0 is valid (falls back to the shared backstop at resolution time);
+		// negative is a misconfiguration and must fail loud at startup.
+		if m.MaxBatchSize < 0 {
+			return nil, fmt.Errorf("model %s/%s: maxBatchSize must be >= 0", m.Acc, m.Name)
+		}
 		key := m.Acc + "|" + m.Name
 		lookup[key] = serverConfig{
 			Alpha:        m.PerfParms.Alpha,

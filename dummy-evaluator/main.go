@@ -44,13 +44,23 @@ func handleSolve(c *gin.Context) {
 	// These values are illustrative, not analytically derived.
 	loadFactor := float32(math.Max(1.0, float64(pd.RPS)/5.0))
 
+	// dummy has no per-model config, so fall back to the shared backstop constant
+	// when the request omits maxConcurrency — avoiding a degenerate MaxRPS=0.
+	// We deliberately do NOT use evaluator.ResolveMaxConcurrency here: for a
+	// config-free stub the backstop is the normal path, not a misconfiguration,
+	// so the helper's per-request warning would be pure noise.
+	concurrency := pd.MaxConcurrency
+	if concurrency <= 0 {
+		concurrency = evaluator.DefaultMaxConcurrency
+	}
+
 	ad := evaluator.AnalysisData{
-		Throughput:   pd.RPS * 0.95,
-		AvgRespTime:  5000 * loadFactor,
-		AvgWaitTime:  20 * loadFactor,
-		AvgTTFT:      50 * loadFactor,
-		AvgITL:       15 * loadFactor,
-		MaxRPS:       float32(pd.MaxConcurrency) * 0.08,
+		Throughput:  pd.RPS * 0.95,
+		AvgRespTime: 5000 * loadFactor,
+		AvgWaitTime: 20 * loadFactor,
+		AvgTTFT:     50 * loadFactor,
+		AvgITL:      15 * loadFactor,
+		MaxRPS:      float32(concurrency) * 0.08,
 	}
 
 	// Saturation check: flag overload when offered rate exceeds computed capacity.

@@ -21,6 +21,7 @@ type configEntry struct {
 	QueueTimeMetric         string `json:"queueTimeMetric"`
 	InputTokenDistribution  string `json:"inputTokenDistribution"`
 	OutputTokenDistribution string `json:"outputTokenDistribution"`
+	DefaultConcurrency      int    `json:"defaultConcurrency"` // client-side in-flight cap when request omits maxConcurrency; 0 → evaluator.DefaultMaxConcurrency
 }
 
 // configFile is the top-level structure of vllm-eval-config.json.
@@ -42,6 +43,7 @@ type serverConfig struct {
 	QueueTimeMetric         string
 	InputTokenDistribution  string // "" defaults to "fixed"
 	OutputTokenDistribution string // "" defaults to "fixed"
+	DefaultConcurrency      int    // 0 → evaluator.DefaultMaxConcurrency at resolution time
 }
 
 // loadConfig reads vllm-eval-config.json from VLLM_EVAL_CONFIG_FILE
@@ -79,6 +81,11 @@ func loadConfig() (map[string]serverConfig, error) {
 		if _, err := newSampler(e.OutputTokenDistribution, 2); err != nil {
 			return nil, fmt.Errorf("config %s/%s: outputTokenDistribution: %w", e.Accelerator, e.Model, err)
 		}
+		// 0 is valid (falls back to the shared backstop at resolution time);
+		// negative is a misconfiguration and must fail loud at startup.
+		if e.DefaultConcurrency < 0 {
+			return nil, fmt.Errorf("config %s/%s: defaultConcurrency must be >= 0", e.Accelerator, e.Model)
+		}
 		lookup[e.Accelerator+"|"+e.Model] = serverConfig{
 			VLLMServedModelName:     served,
 			VLLMPort:                e.VLLMPort,
@@ -91,6 +98,7 @@ func loadConfig() (map[string]serverConfig, error) {
 			QueueTimeMetric:         e.QueueTimeMetric,
 			InputTokenDistribution:  e.InputTokenDistribution,
 			OutputTokenDistribution: e.OutputTokenDistribution,
+			DefaultConcurrency:      e.DefaultConcurrency,
 		}
 	}
 	return lookup, nil

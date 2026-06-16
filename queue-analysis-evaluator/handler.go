@@ -31,11 +31,9 @@ func solveHandler(lookup map[string]serverConfig) gin.HandlerFunc {
 			return
 		}
 
-		// Use pd.MaxConcurrency as the primary source; fall back to sc.MaxBatchSize if absent or invalid.
-		maxBatchSize := sc.MaxBatchSize
-		if pd.MaxConcurrency > 0 {
-			maxBatchSize = pd.MaxConcurrency
-		}
+		// Request value wins; else the per-model maxBatchSize from config; else the
+		// shared backstop (logged). See evaluator.ResolveMaxConcurrency.
+		maxBatchSize := evaluator.ResolveMaxConcurrency(pd.MaxConcurrency, sc.MaxBatchSize, "queue-analysis")
 
 		config := &qaAnalyzer.Configuration{
 			MaxBatchSize: maxBatchSize,

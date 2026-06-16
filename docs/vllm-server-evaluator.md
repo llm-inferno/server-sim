@@ -32,6 +32,7 @@ Actuator** via labels and discovered by the evaluator via the K8s API.
 | `queueTimeMetric` | name of the queue-time histogram metric (used in scrape) |
 | `inputTokenDistribution` | per-request prompt length distribution; mean = `ProblemData.AvgInputTokens` (default: `fixed`) |
 | `outputTokenDistribution` | per-request output length distribution; mean = `ProblemData.AvgOutputTokens` (default: `fixed`) |
+| `defaultConcurrency` | client-side in-flight cap used when a request omits `maxConcurrency`; `0`/omitted falls back to `evaluator.DefaultMaxConcurrency` (256). A request's `maxConcurrency > 0` always wins. A negative value is rejected at startup. |
 
 Supported distribution kinds (apply to both `inputTokenDistribution` and `outputTokenDistribution`; all draw integers ≥ 1, and any `avg == 1` collapses to a constant `1`):
 
