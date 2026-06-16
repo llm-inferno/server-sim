@@ -57,14 +57,7 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
-		// blis is intentionally exempt from the shared evaluator.DefaultMaxConcurrency
-		// backstop: loadConfig validates maxRunningReqs > 0, so the configured
-		// fallback is always positive and a hardware-inappropriate guess is never
-		// substituted for a KV-bound simulation.
-		maxRunningReqs := entry.MaxRunningReqs
-		if pd.MaxConcurrency > 0 {
-			maxRunningReqs = int64(pd.MaxConcurrency)
-		}
+		maxRunningReqs := effectiveMaxRunningReqs(pd, entry)
 
 		simCfg := blisSim.SimConfig{
 			Horizon: entry.SimulationHorizon,
@@ -149,6 +142,22 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 	}
 }
 
+// effectiveMaxRunningReqs returns the running-request cap used for both the
+// pre-simulation saturation check and the DES batch config: the request's
+// MaxConcurrency when positive, else the per-model maxRunningReqs (validated
+// > 0 at config load). Both call sites MUST use this so the saturation gate and
+// the simulation run against the same cap.
+//
+// blis is intentionally exempt from the shared evaluator.DefaultMaxConcurrency
+// backstop: the configured fallback is always positive, so a
+// hardware-inappropriate guess is never substituted for a KV-bound simulation.
+func effectiveMaxRunningReqs(pd evaluator.ProblemData, entry modelEntry) int64 {
+	if pd.MaxConcurrency > 0 {
+		return int64(pd.MaxConcurrency)
+	}
+	return entry.MaxRunningReqs
+}
+
 // checkSaturation performs an analytical pre-simulation overload check using
 // parameters already loaded in the handler. It returns the saturation reason
 // and a derived MaxRPS if the offered workload exceeds server capacity, or
@@ -184,10 +193,7 @@ func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisS
 
 	// --- Bottleneck B: KV cache capacity ---
 	totalKVSlots := entry.TotalKVBlocks * entry.BlockSizeTokens
-	maxRunningReqs := entry.MaxRunningReqs
-	if pd.MaxConcurrency > 0 {
-		maxRunningReqs = int64(pd.MaxConcurrency)
-	}
+	maxRunningReqs := effectiveMaxRunningReqs(pd, entry)
 	avgTokensPerReq := float64(pd.AvgInputTokens) + float64(pd.AvgOutputTokens)
 	if totalKVSlots > 0 && avgTokensPerReq > 0 && maxRunningReqs > 0 {
 		concurrentKVTokens := float64(maxRunningReqs) * avgTokensPerReq

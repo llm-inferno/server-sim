@@ -81,6 +81,11 @@ func loadConfig() (map[string]serverConfig, error) {
 		if _, err := newSampler(e.OutputTokenDistribution, 2); err != nil {
 			return nil, fmt.Errorf("config %s/%s: outputTokenDistribution: %w", e.Accelerator, e.Model, err)
 		}
+		// 0 is valid (falls back to the shared backstop at resolution time);
+		// negative is a misconfiguration and must fail loud at startup.
+		if e.DefaultConcurrency < 0 {
+			return nil, fmt.Errorf("config %s/%s: defaultConcurrency must be >= 0", e.Accelerator, e.Model)
+		}
 		lookup[e.Accelerator+"|"+e.Model] = serverConfig{
 			VLLMServedModelName:     served,
 			VLLMPort:                e.VLLMPort,
