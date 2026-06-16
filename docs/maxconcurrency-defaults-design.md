@@ -72,6 +72,18 @@ and fails loud on misconfiguration. It keeps that check and therefore never reac
 the backstop. We do **not** weaken the validation for the sake of uniformity — loud
 failure is preferable to a hardware-inappropriate guess for the KV-bound DES.
 
+blis resolves the cap once via `effectiveMaxRunningReqs` (request value, else the
+validated configured value), shared between the DES batch config and the pre-sim
+saturation check so the two cannot drift.
+
+### Config validation
+
+`0`/omitted is a valid configured default — it means "fall through to the next
+tier" (request value or backstop). A **negative** configured default is a
+misconfiguration: qa (`maxBatchSize`) and vllm (`defaultConcurrency`) reject
+negative values at config load, matching blis's loud validation. (blis goes
+further and requires a strictly positive value, since it has no backstop tier.)
+
 ## Implementation plan
 
 1. **`pkg/evaluator/concurrency.go`** (new) — `DefaultMaxConcurrency` const +
