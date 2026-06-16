@@ -52,7 +52,12 @@ func makePod(name, namespace, pairID string, ready bool, ip string) *corev1.Pod 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			Labels:    map[string]string{"inferno.server.pair-id": pairID},
+			// resolvePairedVLLM selects on pair-id AND the existence of the
+			// inferno.vllm.model label, so the fixture must carry both.
+			Labels: map[string]string{
+				"inferno.server.pair-id": pairID,
+				"inferno.vllm.model":     "test-model",
+			},
 		},
 		Status: corev1.PodStatus{
 			Phase: corev1.PodRunning,
