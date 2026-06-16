@@ -57,6 +57,10 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
+		// blis is intentionally exempt from the shared evaluator.DefaultMaxConcurrency
+		// backstop: loadConfig validates maxRunningReqs > 0, so the configured
+		// fallback is always positive and a hardware-inappropriate guess is never
+		// substituted for a KV-bound simulation.
 		maxRunningReqs := entry.MaxRunningReqs
 		if pd.MaxConcurrency > 0 {
 			maxRunningReqs = int64(pd.MaxConcurrency)

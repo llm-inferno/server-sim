@@ -14,8 +14,13 @@ const (
 // (e.g. Alpha/Beta/Gamma for the analytical model) are derived by the evaluator
 // from Accelerator and Model via its own configuration.
 type ProblemData struct {
-	RPS             float32 `json:"RPS"`             // offered load: arrival rate of requests to the server (requests/sec)
-	MaxConcurrency  int     `json:"maxConcurrency"`  // maximum concurrent requests in server
+	RPS float32 `json:"RPS"` // offered load: arrival rate of requests to the server (requests/sec)
+	// MaxConcurrency is the maximum concurrent requests in the server. 0 (omitted)
+	// means "use the server's native/configured concurrency": each evaluator falls
+	// back to its own configured default, and finally to DefaultMaxConcurrency.
+	// See ResolveMaxConcurrency. (blis is stricter: it requires a positive
+	// configured maxRunningReqs and never reaches the shared backstop.)
+	MaxConcurrency  int     `json:"maxConcurrency"`
 	AvgInputTokens  float32 `json:"avgInputTokens"`  // average input tokens per request
 	AvgOutputTokens float32 `json:"avgOutputTokens"` // average output tokens per request
 	Accelerator     string  `json:"accelerator"`     // accelerator type (e.g. "H100", "A100")

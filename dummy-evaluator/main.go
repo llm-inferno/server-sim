@@ -44,13 +44,17 @@ func handleSolve(c *gin.Context) {
 	// These values are illustrative, not analytically derived.
 	loadFactor := float32(math.Max(1.0, float64(pd.RPS)/5.0))
 
+	// dummy has no per-model config, so the request value or the shared backstop
+	// (logged) is used — avoiding a degenerate MaxRPS=0 when nothing is supplied.
+	concurrency := evaluator.ResolveMaxConcurrency(pd.MaxConcurrency, 0, "dummy")
+
 	ad := evaluator.AnalysisData{
-		Throughput:   pd.RPS * 0.95,
-		AvgRespTime:  5000 * loadFactor,
-		AvgWaitTime:  20 * loadFactor,
-		AvgTTFT:      50 * loadFactor,
-		AvgITL:       15 * loadFactor,
-		MaxRPS:       float32(pd.MaxConcurrency) * 0.08,
+		Throughput:  pd.RPS * 0.95,
+		AvgRespTime: 5000 * loadFactor,
+		AvgWaitTime: 20 * loadFactor,
+		AvgTTFT:     50 * loadFactor,
+		AvgITL:      15 * loadFactor,
+		MaxRPS:      float32(concurrency) * 0.08,
 	}
 
 	// Saturation check: flag overload when offered rate exceeds computed capacity.

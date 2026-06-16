@@ -13,7 +13,8 @@
       "ignoreEOS": true,
       "queueTimeMetric": "vllm:request_queue_time_seconds",
       "inputTokenDistribution": "fixed",
-      "outputTokenDistribution": "fixed"
+      "outputTokenDistribution": "fixed",
+      "defaultConcurrency": 256
     }
   ]
 }

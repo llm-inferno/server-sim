@@ -60,6 +60,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 ### Important invariants
 
 - `throughput ≤ RPS` — server-sim clamps noisy throughput to RPS to preserve this.
+- `maxConcurrency == 0` (omitted) means "use the server's native/configured concurrency". Evaluators resolve it uniformly via `evaluator.ResolveMaxConcurrency`: request value → per-model config default → `evaluator.DefaultMaxConcurrency` (256, logged). **Exception:** blis validates `maxRunningReqs > 0` at config load and fails loud, so it never reaches the backstop. See `docs/maxconcurrency-defaults-design.md`.
 - `saturation != ""` from an evaluator means the server is overloaded; server-sim skips noise injection. `AnalysisData.IsSaturated()` is the canonical check. See `pkg/evaluator/types.go` for the `SaturationXxx` constants (`"bandwidth"`, `"kv_capacity"`, `"overloaded"`).
   - Metrics may be zero (BLIS pre-sim, DES was skipped) or populated with degraded-state values (queue-analysis, BLIS post-sim). `maxRPS` is populated where computable.
   - BLIS performs an analytical check *before* the DES using decode bandwidth and KV capacity bounds, avoiding expensive simulations on overloaded configs. All saturation checks apply a 2% tolerance margin (`saturationMargin = 0.98`).
