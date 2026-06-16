@@ -15,7 +15,7 @@ each evaluator interprets it under a backend-local name. When the request omits 
 | queue-analysis | `maxBatchSize` from model-data.json | per-model config |
 | blis | `maxRunningReqs` from blis-config.json | per-model config (validated `> 0`) |
 | vllm-server | `64` | hard-coded magic number in `generator.go` |
-| dummy | `MaxRPS = 0` → instant saturation | none (degenerate) |
+| dummy | `MaxRPS = 0` (saturation check disabled) | none (degenerate) |
 
 Two issues: vllm-server hides an arbitrary `64` deep in the load generator, and
 qa/dummy can silently emit degenerate results when nothing supplies a value.
@@ -101,4 +101,11 @@ failure is preferable to a hardware-inappropriate guess for the KV-bound DES.
   are unchanged.
 - **`generator_test.go`** passes `Concurrency` explicitly, so it is unaffected.
 - The only observable change for a previously-degenerate path: dummy with
-  `maxConcurrency == 0` now reports a finite `MaxRPS` (256 × 0.08) instead of `0`.
+  `maxConcurrency == 0` now reports a finite `MaxRPS` (256 × 0.08 = 20.48) instead
+  of `0`. A side effect is that the dummy saturation check — guarded by
+  `MaxRPS > 0` — is now active for these requests, so `RPS > ~20` is flagged
+  `overloaded` (previously the `MaxRPS = 0` suppressed the check entirely).
+- dummy resolves the backstop inline (constant only), not via
+  `ResolveMaxConcurrency`: a config-free stub reaches the backstop on every
+  omitted-`maxConcurrency` request by design, so the helper's misconfiguration
+  warning would be per-request noise.

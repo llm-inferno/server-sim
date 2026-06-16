@@ -74,9 +74,10 @@ external client (maxConcurrency in JSON)
 pkg/server ──pd──▶ evaluator.Client.Solve ──pd (verbatim JSON)──▶ backend /solve
                                                                       │
         ┌──────────────────────────────────┬──────────────┬──────────┴──────────────┐
- queue-analysis: maxBatchSize       blis: maxRunningReqs   vllm: Concurrency    dummy: MaxRPS factor
- (else model-data.json)             (else blis-config.json)(else hard-coded 64) (no fallback)
-      │ Markov model                 │ DES batch + KV sat-check │ in-flight sem   │ MaxRPS = N*0.08
+ queue-analysis: maxBatchSize       blis: maxRunningReqs   vllm: Concurrency        dummy: MaxRPS factor
+ (else model-data.json,             (else blis-config.json, (else defaultConcurrency,(else 256
+  else 256 backstop)                 validated > 0)          else 256 backstop)      backstop)
+      │ Markov model                 │ DES batch + KV sat-check │ in-flight sem        │ MaxRPS = N*0.08
       └─────────────────────── influences AnalysisData (MaxRPS, Saturation, latencies) ┘
                                                                       │
             GET /simulate/{id} ◀── job store ◀── (noise on output metrics only) ◀────────┘

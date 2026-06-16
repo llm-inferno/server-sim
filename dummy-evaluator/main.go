@@ -44,9 +44,15 @@ func handleSolve(c *gin.Context) {
 	// These values are illustrative, not analytically derived.
 	loadFactor := float32(math.Max(1.0, float64(pd.RPS)/5.0))
 
-	// dummy has no per-model config, so the request value or the shared backstop
-	// (logged) is used — avoiding a degenerate MaxRPS=0 when nothing is supplied.
-	concurrency := evaluator.ResolveMaxConcurrency(pd.MaxConcurrency, 0, "dummy")
+	// dummy has no per-model config, so fall back to the shared backstop constant
+	// when the request omits maxConcurrency — avoiding a degenerate MaxRPS=0.
+	// We deliberately do NOT use evaluator.ResolveMaxConcurrency here: for a
+	// config-free stub the backstop is the normal path, not a misconfiguration,
+	// so the helper's per-request warning would be pure noise.
+	concurrency := pd.MaxConcurrency
+	if concurrency <= 0 {
+		concurrency = evaluator.DefaultMaxConcurrency
+	}
 
 	ad := evaluator.AnalysisData{
 		Throughput:  pd.RPS * 0.95,
