@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"path/filepath"
 	"time"
@@ -64,7 +65,13 @@ func (l *Loop) runOnce(parent context.Context) {
 	eff, result, err := solveWithPolicy(ctx, l.cli, l.cfg.SaturationPolicy, pd)
 	if err != nil {
 		l.jobs.Fail(id, err.Error())
-		log.Printf("loop: window failed (skipping publish): %v", err)
+		// A cancelled window is the watcher abandoning it on an allocation
+		// change, not a solver failure — distinguish the two in the log.
+		if errors.Is(err, context.Canceled) {
+			log.Printf("loop: window abandoned (allocation changed mid-flight): %v", err)
+		} else {
+			log.Printf("loop: window failed (skipping publish): %v", err)
+		}
 		return
 	}
 	l.jobs.Complete(id, eff, result)

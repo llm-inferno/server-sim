@@ -30,18 +30,27 @@ type Job struct {
 
 // Manager stores and manages simulation jobs in memory.
 type Manager struct {
-	mu   sync.RWMutex
-	jobs map[string]*Job
-	ttl  time.Duration
-	seq  uint64 // monotonically increasing; stamped on each completion
+	mu        sync.RWMutex
+	jobs      map[string]*Job
+	ttl       time.Duration
+	seq       uint64 // monotonically increasing; stamped on each completion
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // NewManager creates a new job Manager. Completed and failed jobs are evicted
-// after ttl. A sweep runs every ttl/2 (minimum 30s).
+// after ttl. A sweep runs every ttl/2 (minimum 30s). Call Close to stop the
+// background sweep goroutine.
 func NewManager(ttl time.Duration) *Manager {
-	m := &Manager{jobs: make(map[string]*Job), ttl: ttl}
+	m := &Manager{jobs: make(map[string]*Job), ttl: ttl, done: make(chan struct{})}
 	go m.sweepLoop()
 	return m
+}
+
+// Close stops the background sweep goroutine. It is idempotent and safe to call
+// from multiple goroutines.
+func (m *Manager) Close() {
+	m.closeOnce.Do(func() { close(m.done) })
 }
 
 func (m *Manager) sweepLoop() {
@@ -51,8 +60,13 @@ func (m *Manager) sweepLoop() {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	for range ticker.C {
-		m.sweep()
+	for {
+		select {
+		case <-m.done:
+			return
+		case <-ticker.C:
+			m.sweep()
+		}
 	}
 }
 

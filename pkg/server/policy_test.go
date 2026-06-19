@@ -70,8 +70,15 @@ func TestPolicyRetryExhaustedErrors(t *testing.T) {
 		{Saturation: "x", MaxRPS: 4}, {Saturation: "x", MaxRPS: 4},
 		{Saturation: "x", MaxRPS: 4}, {Saturation: "x", MaxRPS: 4},
 	}}
-	_, _, err := solveWithPolicy(context.Background(), s, config.SaturationPolicyRetry, evaluator.ProblemData{RPS: 10})
+	eff, ad, err := solveWithPolicy(context.Background(), s, config.SaturationPolicyRetry, evaluator.ProblemData{RPS: 10})
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
+	}
+	// The last retry runs at util = 0.95 - 2*0.05 = 0.85, so eff.RPS = MaxRPS*0.85.
+	if d := eff.RPS - float32(4*0.85); d < -1e-4 || d > 1e-4 {
+		t.Fatalf("effective RPS = %v, want ~%v (MaxRPS*0.85)", eff.RPS, float32(4*0.85))
+	}
+	if !ad.IsSaturated() {
+		t.Fatalf("result should remain saturated on exhaustion, got %+v", ad)
 	}
 }

@@ -31,6 +31,12 @@ func TestCompleteStoresEffectiveInputAndLatest(t *testing.T) {
 	}
 }
 
+func TestManagerCloseIsIdempotent(t *testing.T) {
+	m := NewManager(60 * 1e9)
+	m.Close()
+	m.Close() // must not panic — Close is idempotent
+}
+
 func TestLatestReturnsNilWhenNoneCompleted(t *testing.T) {
 	m := NewManager(60 * 1e9)
 	m.Create() // pending only

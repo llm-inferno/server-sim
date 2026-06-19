@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +14,12 @@ import (
 	"github.com/llm-inferno/server-sim/pkg/evaluator"
 	"github.com/llm-inferno/server-sim/pkg/job"
 )
+
+type cancelSolver struct{}
+
+func (cancelSolver) SolveCtx(context.Context, evaluator.ProblemData) (evaluator.AnalysisData, error) {
+	return evaluator.AnalysisData{}, context.Canceled
+}
 
 type okSolver struct{ ad evaluator.AnalysisData }
 
@@ -55,6 +64,27 @@ func TestRunOnceSkipsWhenLabelsMissing(t *testing.T) {
 	NewLoop(cfg, jobs, okSolver{}).runOnce(context.Background())
 	if jobs.Latest() != nil {
 		t.Fatal("should not publish when labels missing")
+	}
+}
+
+func TestRunOnceLogsAbandonedOnCancel(t *testing.T) {
+	dir := t.TempDir()
+	writeLabels(t, dir)
+	cfg := config.Config{SaturationPolicy: config.SaturationPolicyPassThrough, LabelsDir: dir, TickInterval: time.Second}
+	jobs := job.NewManager(60 * time.Second)
+	l := NewLoop(cfg, jobs, cancelSolver{})
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	l.runOnce(context.Background())
+
+	if jobs.Latest() != nil {
+		t.Fatal("cancelled window must not publish")
+	}
+	if got := buf.String(); !strings.Contains(got, "abandoned") {
+		t.Fatalf("log should distinguish abandoned window, got %q", got)
 	}
 }
 

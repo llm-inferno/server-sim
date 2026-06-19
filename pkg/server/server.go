@@ -43,11 +43,13 @@ func New(cfg config.Config) *Server {
 }
 
 // Shutdown stops the continuous evaluation loop (and its per-window
-// goroutines), if running. Safe to call when continuous mode is disabled.
+// goroutines), if running, and the job store's background sweep. Safe to call
+// when continuous mode is disabled, and idempotent.
 func (s *Server) Shutdown() {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	s.jobs.Close()
 }
 
 // Run starts the HTTP server on the configured port.
@@ -119,7 +121,7 @@ func (s *Server) handleLatest(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no result yet"})
 		return
 	}
-	c.IndentedJSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"effectiveInput": j.EffectiveInput,
 		"result":         j.Result,
 		"completedAt":    j.CompletedAt,
