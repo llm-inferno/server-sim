@@ -11,7 +11,7 @@ flowchart TD
     Consumer["Consumer\n(REST client)"]
 
     subgraph ss["server-sim  :8080"]
-        API["POST /simulate\nGET  /simulate/:id\nGET  /health"]
+        API["POST /simulate\nGET  /simulate/:id\nGET  /latest\nGET  /health"]
         Jobs[("Async Job Store\nin-memory")]
         Noise["Noise Injection\nGaussian · optional"]
         EvalClient["Evaluator HTTP Client\n10-min timeout"]
@@ -128,6 +128,24 @@ EVALUATOR_URL=http://localhost:8081 NOISE_ENABLED=true go run ./cmd/server-sim
 | `NOISE_ENABLED` | `false` | Add Gaussian noise to metrics |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric value |
 | `JOB_TTL_MINUTES` | `60` | Minutes to retain completed/failed jobs before eviction |
+| `SERVERSIM_CONTINUOUS` | `false` | Enable continuous evaluation loop (reads workload from labels file each tick) |
+| `SERVERSIM_TICK_SECONDS` | `5` | Continuous loop tick interval in seconds (floor: 1) |
+| `SERVERSIM_SATURATION_POLICY` | `retry-at-lower-load` | Saturation handling: `retry-at-lower-load` or `pass-through` |
+| `SERVERSIM_LABELS_DIR` | `/etc/podinfo` | Directory containing the downward-API `labels` file used by the continuous loop |
+
+### Continuous mode
+
+When `SERVERSIM_CONTINUOUS=true`, server-sim starts a background loop that runs evaluation windows back-to-back. Each tick it reads the current workload (`rpm`, `intokens`, `outtokens`, `model`, `accelerator`, `maxbatchsize`) from the downward-API labels file at `<SERVERSIM_LABELS_DIR>/labels` and runs one window with the configured saturation policy. The result is stored and served by `GET /latest`. When the `maxbatchsize` label changes between ticks, the in-flight window is cancelled so the next window immediately reflects the new allocation. `POST /simulate` continues to work alongside the loop.
+
+```bash
+# Read the most-recent completed window result
+curl -s http://localhost:8080/latest
+# → {"completedAt":"2026-01-02T15:04:05Z","effectiveInput":{...},"result":{...}}
+
+# Cold start (no window has completed yet)
+curl -s http://localhost:8080/latest
+# → 404 {"error":"no result yet"}
+```
 
 ### Docker
 

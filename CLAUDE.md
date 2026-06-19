@@ -35,6 +35,13 @@ server-sim is an async job broker that delegates to a pluggable evaluator backen
 
 1. `POST /simulate` — accepts `ProblemData`, spawns a goroutine that calls the evaluator, returns a `jobID`.
 2. `GET /simulate/{id}` — polls for result (`pending` / `completed` / `failed`).
+3. `GET /latest` — returns the most-recent completed job as `{"effectiveInput": …, "result": …, "completedAt": …}`; `404 {"error":"no result yet"}` on cold start.
+
+### Continuous mode
+
+When `SERVERSIM_CONTINUOUS=true`, server-sim starts a background ticker loop (`pkg/server/loop.go`) that runs evaluation windows back-to-back, one at a time. Each tick it reads the current workload (`rpm`, `intokens`, `outtokens`, `model`, `accelerator`, `maxbatchsize`) from the downward-API labels file at `<SERVERSIM_LABELS_DIR>/labels`, converts it to a `ProblemData`, and calls `solveWithPolicy` with the configured saturation policy. The saturation policy (`retry-at-lower-load` or `pass-through`) works identically to the on-demand path. When the `maxbatchsize` label changes between ticks, the in-flight window is cancelled immediately so the next window runs under the new concurrency without waiting for the old window to finish.
+
+The result is stored in the job store and served by `GET /latest`. `POST /simulate` remains fully functional alongside continuous mode; the two paths coexist and share the same job store.
 
 All backends implement the same `POST /solve` REST contract (`ProblemData` → `AnalysisData`). server-sim is backend-agnostic; evaluator-specific config (model parameters, hardware specs) is resolved internally by each evaluator from its own config file, never exposed in the request.
 
@@ -77,6 +84,10 @@ server-sim env vars (`pkg/config/config.go`):
 | `NOISE_ENABLED` | `false` | Enable Gaussian noise |
 | `NOISE_STD_FRACTION` | `0.05` | Noise std dev as fraction of metric |
 | `JOB_TTL_MINUTES` | `60` | Job retention after completion |
+| `SERVERSIM_CONTINUOUS` | `false` | Enable continuous evaluation loop (reads workload from labels file each tick) |
+| `SERVERSIM_TICK_SECONDS` | `5` | Continuous loop tick interval in seconds (floor: 1) |
+| `SERVERSIM_SATURATION_POLICY` | `retry-at-lower-load` | Saturation handling: `retry-at-lower-load` (re-simulate at progressively lower load up to 3 retries) or `pass-through` (return saturated result as-is) |
+| `SERVERSIM_LABELS_DIR` | `/etc/podinfo` | Directory containing the downward-API `labels` file used by the continuous loop |
 
 blis-evaluator additional vars: `BLIS_CONFIG_FILE`, `HW_CONFIG_FILE`, `LATENCY_BACKEND`, `EVALUATOR_PORT`.
 
