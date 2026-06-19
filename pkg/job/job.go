@@ -86,7 +86,9 @@ func (m *Manager) Complete(id string, effectiveInput evaluator.ProblemData, resu
 	m.mu.Unlock()
 }
 
-// Latest returns the most-recently-completed job, or nil if none has completed.
+// Latest returns a snapshot copy of the most-recently-completed job, or nil if
+// none has completed. The returned pointer is a fresh allocation; callers may
+// read its fields without holding any lock.
 func (m *Manager) Latest() *Job {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -99,7 +101,11 @@ func (m *Manager) Latest() *Job {
 			latest = j
 		}
 	}
-	return latest
+	if latest == nil {
+		return nil
+	}
+	cp := *latest
+	return &cp
 }
 
 // Fail marks a job as failed with the given error message.
@@ -113,9 +119,16 @@ func (m *Manager) Fail(id string, errMsg string) {
 	m.mu.Unlock()
 }
 
-// Get retrieves a job by ID. Returns nil if not found.
+// Get retrieves a snapshot copy of a job by ID. Returns nil if not found.
+// The returned pointer is a fresh allocation; callers may read its fields
+// without holding any lock.
 func (m *Manager) Get(id string) *Job {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.jobs[id]
+	j, ok := m.jobs[id]
+	if !ok {
+		return nil
+	}
+	cp := *j
+	return &cp
 }
