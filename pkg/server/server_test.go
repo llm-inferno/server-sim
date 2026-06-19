@@ -207,3 +207,41 @@ func TestServer_UnsaturatedResult_SaturationFieldAbsentFromJSON(t *testing.T) {
 		t.Errorf("saturation field should be absent (omitempty) when not saturated, got %v", result["saturation"])
 	}
 }
+
+func TestLatestColdStart404(t *testing.T) {
+	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5})
+	defer eval.Close()
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute})
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	resp, _ := http.Get(srv.URL + "/latest")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("cold-start /latest = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestLatestReturnsEnvelope(t *testing.T) {
+	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5, Throughput: 3})
+	defer eval.Close()
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute})
+	// Drive one job synchronously via the existing POST path.
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	id := submitJob(t, srv)
+	pollJob(t, srv, id)
+
+	resp, err := http.Get(srv.URL + "/latest")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("/latest status err=%v code=%d", err, resp.StatusCode)
+	}
+	var env struct {
+		EffectiveInput evaluator.ProblemData  `json:"effectiveInput"`
+		Result         evaluator.AnalysisData `json:"result"`
+		CompletedAt    string                 `json:"completedAt"`
+	}
+	json.NewDecoder(resp.Body).Decode(&env)
+	if env.Result.AvgITL != 5 || env.CompletedAt == "" {
+		t.Fatalf("bad envelope: %+v", env)
+	}
+}

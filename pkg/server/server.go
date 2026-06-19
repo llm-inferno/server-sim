@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -30,6 +31,11 @@ func New(cfg config.Config) *Server {
 	s.router.POST("/simulate", s.handleSimulate)
 	s.router.GET("/simulate/:id", s.handleGetJob)
 	s.router.GET("/health", s.handleHealth)
+	s.router.GET("/latest", s.handleLatest)
+	if cfg.ContinuousMode {
+		loop := NewLoop(cfg, s.jobs, s.evalCli)
+		go loop.Run(context.Background())
+	}
 	return s
 }
 
@@ -93,4 +99,18 @@ func (s *Server) handleGetJob(c *gin.Context) {
 // handleHealth responds with 200 OK for liveness checks.
 func (s *Server) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// handleLatest returns the most-recent completed job as a self-describing envelope.
+func (s *Server) handleLatest(c *gin.Context) {
+	j := s.jobs.Latest()
+	if j == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no result yet"})
+		return
+	}
+	c.IndentedJSON(http.StatusOK, gin.H{
+		"effectiveInput": j.EffectiveInput,
+		"result":         j.Result,
+		"completedAt":    j.CompletedAt,
+	})
 }
