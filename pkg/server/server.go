@@ -18,6 +18,7 @@ type Server struct {
 	cfg     config.Config
 	evalCli *evaluator.Client
 	jobs    *job.Manager
+	cancel  context.CancelFunc // cancels the continuous loop; nil when not running
 }
 
 // New creates and configures a new Server.
@@ -33,10 +34,20 @@ func New(cfg config.Config) *Server {
 	s.router.GET("/health", s.handleHealth)
 	s.router.GET("/latest", s.handleLatest)
 	if cfg.ContinuousMode {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.cancel = cancel
 		loop := NewLoop(cfg, s.jobs, s.evalCli)
-		go loop.Run(context.Background())
+		go loop.Run(ctx)
 	}
 	return s
+}
+
+// Shutdown stops the continuous evaluation loop (and its per-window
+// goroutines), if running. Safe to call when continuous mode is disabled.
+func (s *Server) Shutdown() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 }
 
 // Run starts the HTTP server on the configured port.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -73,7 +74,12 @@ func Load() Config {
 		}
 	}
 	if v := os.Getenv("SERVERSIM_SATURATION_POLICY"); v != "" {
-		cfg.SaturationPolicy = v
+		switch v {
+		case SaturationPolicyRetry, SaturationPolicyPassThrough:
+			cfg.SaturationPolicy = v
+		default:
+			log.Printf("config: unknown SERVERSIM_SATURATION_POLICY %q; using default %q", v, cfg.SaturationPolicy)
+		}
 	}
 	if v := os.Getenv("SERVERSIM_LABELS_DIR"); v != "" {
 		cfg.LabelsDir = v

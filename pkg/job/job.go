@@ -25,6 +25,7 @@ type Job struct {
 	Result         *evaluator.AnalysisData
 	Error          string
 	CompletedAt    time.Time // zero while pending
+	seq            uint64    // monotonic completion order; 0 until completed
 }
 
 // Manager stores and manages simulation jobs in memory.
@@ -32,6 +33,7 @@ type Manager struct {
 	mu   sync.RWMutex
 	jobs map[string]*Job
 	ttl  time.Duration
+	seq  uint64 // monotonically increasing; stamped on each completion
 }
 
 // NewManager creates a new job Manager. Completed and failed jobs are evicted
@@ -78,10 +80,12 @@ func (m *Manager) Create() string {
 func (m *Manager) Complete(id string, effectiveInput evaluator.ProblemData, result evaluator.AnalysisData) {
 	m.mu.Lock()
 	if j, ok := m.jobs[id]; ok {
+		m.seq++
 		j.Status = StatusCompleted
 		j.EffectiveInput = effectiveInput
 		j.Result = &result
 		j.CompletedAt = time.Now()
+		j.seq = m.seq
 	}
 	m.mu.Unlock()
 }
@@ -97,7 +101,7 @@ func (m *Manager) Latest() *Job {
 		if j.Status != StatusCompleted {
 			continue
 		}
-		if latest == nil || j.CompletedAt.After(latest.CompletedAt) {
+		if latest == nil || j.seq > latest.seq {
 			latest = j
 		}
 	}

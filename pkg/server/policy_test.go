@@ -51,6 +51,20 @@ func TestPolicyRetryRecoversUnsaturated(t *testing.T) {
 	}
 }
 
+func TestPolicyRetrySaturatedWithoutMaxRPSErrors(t *testing.T) {
+	// Saturated but MaxRPS not computable (0). Must fail the window rather than
+	// retry at RPS = 0*util = 0, which would publish a bogus zero-load result.
+	s := &scriptedSolver{results: []evaluator.AnalysisData{{Saturation: evaluator.SaturationKV, MaxRPS: 0}}}
+	pd := evaluator.ProblemData{RPS: 10}
+	_, _, err := solveWithPolicy(context.Background(), s, config.SaturationPolicyRetry, pd)
+	if err == nil {
+		t.Fatal("expected error when saturated with MaxRPS=0")
+	}
+	if s.calls != 1 {
+		t.Fatalf("should not retry when MaxRPS<=0: calls=%d", s.calls)
+	}
+}
+
 func TestPolicyRetryExhaustedErrors(t *testing.T) {
 	s := &scriptedSolver{results: []evaluator.AnalysisData{
 		{Saturation: "x", MaxRPS: 4}, {Saturation: "x", MaxRPS: 4},

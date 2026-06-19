@@ -50,6 +50,29 @@ func TestLatestPicksMostRecentCompletion(t *testing.T) {
 	}
 }
 
+// TestLatestUsesCompletionOrderNotTimestamp verifies that Latest() picks the
+// job completed last by monotonic sequence, so ties on the wall-clock
+// CompletedAt (same tick) and randomized map iteration order can't make it
+// non-deterministic. id2 completes after id1, so it must win even when both
+// share a CompletedAt timestamp.
+func TestLatestUsesCompletionOrderNotTimestamp(t *testing.T) {
+	m := NewManager(60 * 1e9)
+	id1 := m.Create()
+	id2 := m.Create()
+	m.Complete(id1, evaluator.ProblemData{RPS: 1}, evaluator.AnalysisData{})
+	m.Complete(id2, evaluator.ProblemData{RPS: 2}, evaluator.AnalysisData{})
+	// Force identical wall-clock timestamps to isolate the sequence tie-break.
+	m.mu.Lock()
+	ts := m.jobs[id1].CompletedAt
+	m.jobs[id2].CompletedAt = ts
+	m.mu.Unlock()
+	for i := 0; i < 50; i++ { // repeat: map iteration order is randomized
+		if got := m.Latest(); got == nil || got.ID != id2 {
+			t.Fatalf("Latest().ID = %v, want %s (completed last)", got, id2)
+		}
+	}
+}
+
 // TestGetLatestRace is a focused regression test for the data race between
 // Complete (writer) and Get/Latest (readers). The race detector flags
 // unsynchronized field reads on the *Job pointer returned by Get/Latest when

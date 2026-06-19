@@ -33,3 +33,11 @@ func TestLoadTickFloorAndPolicyOverride(t *testing.T) {
 		t.Fatalf("SaturationPolicy = %q", cfg.SaturationPolicy)
 	}
 }
+
+func TestLoadRejectsUnknownPolicy(t *testing.T) {
+	t.Setenv("SERVERSIM_SATURATION_POLICY", "retry-lower-load") // typo
+	cfg := Load()
+	if cfg.SaturationPolicy != SaturationPolicyRetry {
+		t.Fatalf("unknown policy should fall back to default %q, got %q", SaturationPolicyRetry, cfg.SaturationPolicy)
+	}
+}

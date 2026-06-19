@@ -57,3 +57,21 @@ func TestRunOnceSkipsWhenLabelsMissing(t *testing.T) {
 		t.Fatal("should not publish when labels missing")
 	}
 }
+
+func TestRunReturnsWhenContextCancelled(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{SaturationPolicy: config.SaturationPolicyPassThrough, LabelsDir: dir, TickInterval: time.Second}
+	jobs := job.NewManager(60 * time.Second)
+	l := NewLoop(cfg, jobs, okSolver{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { l.Run(ctx); close(done) }()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return after context cancellation")
+	}
+}

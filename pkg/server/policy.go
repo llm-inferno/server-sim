@@ -29,7 +29,13 @@ func solveWithPolicy(ctx context.Context, cli solver, policy string, pd evaluato
 	if policy == config.SaturationPolicyPassThrough || !ad.IsSaturated() {
 		return pd, ad, nil
 	}
-	// retry-at-lower-load
+	// retry-at-lower-load. We anchor the lower load on MaxRPS, so it must be
+	// computable; some saturation modes (e.g. kv_capacity) leave it at 0. Fail
+	// the window rather than re-running at RPS=0, which would publish a bogus
+	// zero-load measurement — the Collector treats the absence as staleness.
+	if ad.MaxRPS <= 0 {
+		return pd, ad, fmt.Errorf("saturated with no computable MaxRPS (%v); cannot retry at lower load", ad.MaxRPS)
+	}
 	util := overloadTargetUtilization
 	eff := pd
 	for attempt := 1; attempt <= overloadMaxRetries; attempt++ {

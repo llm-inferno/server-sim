@@ -221,6 +221,14 @@ func TestLatestColdStart404(t *testing.T) {
 	}
 }
 
+func TestShutdownIsSafeWithoutContinuousMode(t *testing.T) {
+	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5})
+	defer eval.Close()
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute}) // ContinuousMode off
+	s.Shutdown()                                                         // must not panic when no loop is running
+	s.Shutdown()                                                         // idempotent
+}
+
 func TestLatestReturnsEnvelope(t *testing.T) {
 	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5, Throughput: 3})
 	defer eval.Close()
