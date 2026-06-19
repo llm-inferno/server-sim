@@ -105,8 +105,8 @@ func TestGetLatestRace(t *testing.T) {
 		for i := 0; i < iterations; i++ {
 			j := m.Get(sharedJob.ID)
 			if j != nil {
-				_ = j.Status     // DATA RACE: writer sets j.Status under Lock
-				_ = j.Result     // DATA RACE: writer sets j.Result under Lock
+				_ = j.Status // DATA RACE: writer sets j.Status under Lock
+				_ = j.Result // DATA RACE: writer sets j.Result under Lock
 				_ = j.CompletedAt
 			}
 		}
@@ -119,9 +119,9 @@ func TestGetLatestRace(t *testing.T) {
 		for i := 0; i < iterations; i++ {
 			j := m.Latest()
 			if j != nil {
-				_ = j.Status        // DATA RACE
+				_ = j.Status // DATA RACE
 				_ = j.EffectiveInput
-				_ = j.Result        // DATA RACE
+				_ = j.Result // DATA RACE
 				_ = j.CompletedAt
 			}
 		}

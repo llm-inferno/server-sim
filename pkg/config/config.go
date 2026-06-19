@@ -15,15 +15,15 @@ const (
 
 // Config holds server-sim runtime configuration.
 type Config struct {
-	Port              int
-	EvaluatorURL      string
-	NoiseEnabled      bool
-	Noise             noise.Config
-	JobTTL            time.Duration
-	ContinuousMode    bool
-	TickInterval      time.Duration
-	SaturationPolicy  string
-	LabelsDir         string
+	Port             int
+	EvaluatorURL     string
+	NoiseEnabled     bool
+	Noise            noise.Config
+	JobTTL           time.Duration
+	ContinuousMode   bool
+	TickInterval     time.Duration
+	SaturationPolicy string
+	LabelsDir        string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
