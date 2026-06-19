@@ -8,23 +8,36 @@ import (
 	"github.com/llm-inferno/server-sim/pkg/noise"
 )
 
+const (
+	SaturationPolicyRetry       = "retry-at-lower-load"
+	SaturationPolicyPassThrough = "pass-through"
+)
+
 // Config holds server-sim runtime configuration.
 type Config struct {
-	Port         int
-	EvaluatorURL string
-	NoiseEnabled bool
-	Noise        noise.Config
-	JobTTL       time.Duration
+	Port              int
+	EvaluatorURL      string
+	NoiseEnabled      bool
+	Noise             noise.Config
+	JobTTL            time.Duration
+	ContinuousMode    bool
+	TickInterval      time.Duration
+	SaturationPolicy  string
+	LabelsDir         string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() Config {
 	cfg := Config{
-		Port:         8080,
-		EvaluatorURL: "http://localhost:8081",
-		NoiseEnabled: false,
-		Noise:        noise.Config{StdFraction: 0.05},
-		JobTTL:       60 * time.Minute,
+		Port:             8080,
+		EvaluatorURL:     "http://localhost:8081",
+		NoiseEnabled:     false,
+		Noise:            noise.Config{StdFraction: 0.05},
+		JobTTL:           60 * time.Minute,
+		ContinuousMode:   false,
+		TickInterval:     5 * time.Second,
+		SaturationPolicy: SaturationPolicyRetry,
+		LabelsDir:        "/etc/podinfo",
 	}
 
 	if v := os.Getenv("SERVERSIM_PORT"); v != "" {
@@ -47,6 +60,23 @@ func Load() Config {
 		if m, err := strconv.Atoi(v); err == nil && m > 0 {
 			cfg.JobTTL = time.Duration(m) * time.Minute
 		}
+	}
+	if os.Getenv("SERVERSIM_CONTINUOUS") == "true" {
+		cfg.ContinuousMode = true
+	}
+	if v := os.Getenv("SERVERSIM_TICK_SECONDS"); v != "" {
+		if s, err := strconv.Atoi(v); err == nil {
+			if s < 1 {
+				s = 1
+			}
+			cfg.TickInterval = time.Duration(s) * time.Second
+		}
+	}
+	if v := os.Getenv("SERVERSIM_SATURATION_POLICY"); v != "" {
+		cfg.SaturationPolicy = v
+	}
+	if v := os.Getenv("SERVERSIM_LABELS_DIR"); v != "" {
+		cfg.LabelsDir = v
 	}
 
 	return cfg
