@@ -65,7 +65,7 @@ func (s *Server) handleSimulate(c *gin.Context) {
 				result.Throughput = pd.RPS
 			}
 		}
-		s.jobs.Complete(id, result)
+		s.jobs.Complete(id, pd, result)
 	}()
 
 	c.JSON(http.StatusCreated, gin.H{"jobID": id})
