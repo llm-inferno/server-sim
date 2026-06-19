@@ -70,6 +70,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 - `maxConcurrency == 0` (omitted) means "use the server's native/configured concurrency". Evaluators resolve it uniformly via `evaluator.ResolveMaxConcurrency`: request value → per-model config default → `evaluator.DefaultMaxConcurrency` (256, logged). **Exception:** blis validates `maxRunningReqs > 0` at config load and fails loud, so it never reaches the backstop. See `docs/maxconcurrency-defaults-design.md`.
 - `saturation != ""` from an evaluator means the server is overloaded; server-sim skips noise injection. `AnalysisData.IsSaturated()` is the canonical check. See `pkg/evaluator/types.go` for the `SaturationXxx` constants (`"bandwidth"`, `"kv_capacity"`, `"overloaded"`).
   - Metrics may be zero (BLIS pre-sim, DES was skipped) or populated with degraded-state values (queue-analysis, BLIS post-sim). `maxRPS` is populated where computable.
+  - The `retry-at-lower-load` policy anchors the retry on `maxRPS` (re-runs at `maxRPS × util`). If a saturated result has no computable `maxRPS` (`<= 0`), the window **fails** instead of retrying at RPS 0 — the loop publishes nothing and the Collector treats the absence as staleness. `pass-through` is unaffected (it returns the saturated result as-is).
   - BLIS performs an analytical check *before* the DES using decode bandwidth and KV capacity bounds, avoiding expensive simulations on overloaded configs. All saturation checks apply a 2% tolerance margin (`saturationMargin = 0.98`).
 - The evaluator HTTP client has a 10-minute wall-clock timeout (DES runs can be slow). The BLIS default simulation horizon is 300 s of *simulated* time — a longer horizon reduces cold-start throughput bias but increases wall-clock runtime; tune `simulationHorizon` in `blis-config.json` per entry if needed.
 
@@ -86,7 +87,7 @@ server-sim env vars (`pkg/config/config.go`):
 | `JOB_TTL_MINUTES` | `60` | Job retention after completion |
 | `SERVERSIM_CONTINUOUS` | `false` | Enable continuous evaluation loop (reads workload from labels file each tick) |
 | `SERVERSIM_TICK_SECONDS` | `5` | Continuous loop tick interval in seconds (floor: 1) |
-| `SERVERSIM_SATURATION_POLICY` | `retry-at-lower-load` | Saturation handling: `retry-at-lower-load` (re-simulate at progressively lower load up to 3 retries) or `pass-through` (return saturated result as-is) |
+| `SERVERSIM_SATURATION_POLICY` | `retry-at-lower-load` | Saturation handling: `retry-at-lower-load` (re-simulate at progressively lower load up to 3 retries) or `pass-through` (return saturated result as-is). Unknown values are logged and fall back to the default. |
 | `SERVERSIM_LABELS_DIR` | `/etc/podinfo` | Directory containing the downward-API `labels` file used by the continuous loop |
 
 blis-evaluator additional vars: `BLIS_CONFIG_FILE`, `HW_CONFIG_FILE`, `LATENCY_BACKEND`, `EVALUATOR_PORT`.
