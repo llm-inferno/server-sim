@@ -73,6 +73,23 @@ func TestDetectSaturation_TTFTTrend_IgnoresFailedSamples(t *testing.T) {
 	}
 }
 
+func TestDetectSaturation_TTFTTrend_TrailingFailuresDoNotInflate(t *testing.T) {
+	// 40 successful samples ramp 80ms→119ms: growth at the last successful index
+	// (39) is 39/80 = 48.75%, just under the 50% threshold. Two trailing failed
+	// samples must NOT extend the extrapolation to index 41 (41/80 = 51.25%),
+	// which would be a false positive. Error rate 2/42 ≈ 4.8% stays below 5%, so
+	// only the TTFT-trend signal decides.
+	samples := make([]sample, 0, 42)
+	for i := 0; i < 40; i++ {
+		samples = append(samples, sample{TTFT: time.Duration(80+i) * time.Millisecond})
+	}
+	samples = append(samples, sample{Failed: true}, sample{Failed: true})
+	res := windowResult{Samples: samples}
+	if got := detectSaturation(res, 0); got != "" {
+		t.Errorf("got %q, want empty (trailing failures must not inflate TTFT growth)", got)
+	}
+}
+
 func TestDetectSaturation_ErrorRate(t *testing.T) {
 	samples := []sample{
 		{TTFT: 100 * time.Millisecond},
