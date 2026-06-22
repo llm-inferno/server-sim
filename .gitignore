@@ -3,6 +3,9 @@
 /dummy-evaluator-bin
 *.exe
 *.out
+# `go build ./continuous-vllm-server-evaluator` writes a binary whose name
+# collides with the package directory; ignore it so it can't be committed.
+/continuous-vllm-server-evaluator/continuous-vllm-server-evaluator
 
 # Go build cache
 /vendor/

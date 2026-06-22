@@ -16,56 +16,68 @@ import (
 func main() {
 	lookup, err := loadConfig()
 	if err != nil {
-		log.Fatalf("load vllm eval config: %v", err)
+		log.Fatalf("loadConfig: %v", err)
 	}
-	log.Printf("loaded %d accelerator/model configurations", len(lookup))
+	log.Printf("continuous-vllm-server-evaluator: loaded %d config entries", len(lookup))
 
 	port := 8081
 	if v := os.Getenv("EVALUATOR_PORT"); v != "" {
-		if p, err := strconv.Atoi(v); err == nil {
+		if p, perr := strconv.Atoi(v); perr == nil {
 			port = p
 		}
 	}
 
-	vllmPort, err := resolveVLLMPort(lookup)
-	if err != nil {
-		log.Fatalf("%v", err)
+	vllmPort, perr := resolveVLLMPort(lookup)
+	if perr != nil {
+		log.Fatalf("%v", perr)
 	}
 
 	// Build K8s client once at startup; nil outside a cluster (pairing loop
 	// handles nil gracefully by returning an error each iteration).
 	var k8sClient kubernetes.Interface
-	if cfg, err := rest.InClusterConfig(); err != nil {
-		log.Printf("k8s in-cluster config not available: %v", err)
-	} else if c, err := kubernetes.NewForConfig(cfg); err != nil {
-		log.Printf("k8s client init failed: %v", err)
+	if cfg, cerr := rest.InClusterConfig(); cerr != nil {
+		log.Printf("not in cluster: %v (pairing disabled)", cerr)
+	} else if c, kerr := kubernetes.NewForConfig(cfg); kerr != nil {
+		log.Printf("k8s client init failed: %v (pairing disabled)", kerr)
 	} else {
 		k8sClient = c
 		log.Printf("k8s client initialized")
 	}
 
-	state := &handlerState{Lookup: lookup}
+	g := newGenerator(lookup)
+	// Warmup applies once, anchored at the first accepted arrival (not loop
+	// start); reuse the first entry's WarmupSec if set.
+	for _, sc := range lookup {
+		g.warmup = time.Duration(sc.WarmupSec) * time.Second
+		break
+	}
 
+	// Background pairing resolver (same cadence as the windowed binary).
 	go func() {
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			ps, err := resolvePairing(ctx, k8sClient, vllmPort)
+			rctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ps, rerr := resolvePairing(rctx, k8sClient, vllmPort)
 			cancel()
-			if err == nil {
-				state.Pairing.Store(ps)
+			if rerr == nil {
+				g.pairing.Store(ps)
 				log.Printf("pairing resolved: vLLM pod %s:%d (pair-id=%s)", ps.VLLMPodIP, ps.VLLMPort, ps.PairID)
 			} else {
-				log.Printf("pairing not yet resolved: %v", err)
+				log.Printf("pairing not yet resolved: %v", rerr)
 			}
 			time.Sleep(15 * time.Second)
 		}
 	}()
 
+	// Persistent arrival loop.
+	loopCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go g.runLoop(loopCtx)
+
 	r := gin.Default()
-	r.POST("/solve", solveHandler(state))
-	log.Printf("vllm-server-evaluator listening on :%d", port)
+	r.POST("/solve", solveHandler(g))
+	log.Printf("continuous-vllm-server-evaluator listening on :%d", port)
 	if err := r.Run(fmt.Sprintf(":%d", port)); err != nil {
-		log.Fatalf("vllm-server-evaluator: %v", err)
+		log.Fatalf("server: %v", err)
 	}
 }
 
@@ -86,7 +98,7 @@ func resolveVLLMPort(lookup map[string]serverConfig) (int, error) {
 			continue
 		}
 		if sc.VLLMPort != port {
-			return 0, fmt.Errorf("vllm-eval-config has mismatched vllmPort values (%d vs %d); all entries must share the same port (one paired vLLM per evaluator pod)", port, sc.VLLMPort)
+			return 0, fmt.Errorf("vllm-eval-config has mismatched vllmPort values (%d vs %d); all entries must share the same port", port, sc.VLLMPort)
 		}
 	}
 	if port == 0 {

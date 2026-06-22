@@ -1,0 +1,18 @@
+{
+  "configs": [
+    {
+      "accelerator": "H100",
+      "model": "llama_3_1_8b",
+      "vllmServedModelName": "unsloth/Meta-Llama-3.1-8B-Instruct",
+      "vllmPort": 8000,
+      "warmupSec": 10,
+      "minSamples": 20,
+      "ignoreEOS": true,
+      "queueTimeMetric": "vllm:request_queue_time_seconds",
+      "inputTokenDistribution": "uniform-bounded",
+      "outputTokenDistribution": "uniform-bounded",
+      "defaultConcurrency": 128,
+      "trailingWindowSec": 30
+    }
+  ]
+}

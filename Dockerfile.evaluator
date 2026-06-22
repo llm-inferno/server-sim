@@ -7,6 +7,7 @@ RUN go build -o dummy-evaluator ./dummy-evaluator
 RUN go build -o queue-analysis-evaluator ./queue-analysis-evaluator
 RUN go build -o blis-evaluator ./blis-evaluator
 RUN go build -o vllm-server-evaluator ./vllm-server-evaluator
+RUN go build -o continuous-vllm-server-evaluator ./continuous-vllm-server-evaluator
 
 FROM alpine:3.20
 WORKDIR /app
@@ -14,6 +15,7 @@ COPY --from=builder /app/dummy-evaluator .
 COPY --from=builder /app/queue-analysis-evaluator .
 COPY --from=builder /app/blis-evaluator .
 COPY --from=builder /app/vllm-server-evaluator .
+COPY --from=builder /app/continuous-vllm-server-evaluator .
 COPY evaluator.sh .
 RUN chmod +x evaluator.sh
 EXPOSE 8081

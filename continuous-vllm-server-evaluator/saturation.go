@@ -9,30 +9,30 @@ const (
 	errorRateThreshold       = 0.05 // >=5%
 )
 
-// detectSaturation evaluates three independent signals; if any triggers,
-// returns evaluator.SaturationOverload. Otherwise returns "".
-//
-// minSamples avoids spurious trend detection on tiny windows.
-func detectSaturation(r windowResult, minSamples int) string {
-	// Signal 3: error rate (cheapest, do first).
-	if rate := errorRate(r.Samples); rate >= errorRateThreshold {
+// detectSaturationTrailing flags overload from the trailing-window samples plus
+// the queue/inference means. Mirrors the windowed detector's three signals:
+// TTFT growth across the window, error rate, and queue-time dominance. Returns
+// SaturationNone when fewer than minSamples completed (cannot judge).
+func detectSaturationTrailing(samples []sample, minSamples int, queueMeanSec, inferMeanSec float64) string {
+	completed := 0
+	for _, s := range samples {
+		if !s.Failed {
+			completed++
+		}
+	}
+	if completed < minSamples {
+		return evaluator.SaturationNone
+	}
+	if errorRate(samples) >= errorRateThreshold {
 		return evaluator.SaturationOverload
 	}
-
-	// Signal 1: TTFT trend.
-	if len(r.Samples) >= maxInt(2, minSamples) && ttftGrowth(r.Samples) > ttftTrendGrowthThreshold {
+	if len(samples) >= maxInt(2, minSamples) && ttftGrowth(samples) > ttftTrendGrowthThreshold {
 		return evaluator.SaturationOverload
 	}
-
-	// Signal 2: queue dominance from /metrics deltas.
-	queueMean := windowDelta(r.ScrapeAtStart.QueueTimeSum, r.ScrapeAtEnd.QueueTimeSum,
-		r.ScrapeAtStart.QueueTimeCount, r.ScrapeAtEnd.QueueTimeCount)
-	inferMean := windowDelta(r.ScrapeAtStart.InferTimeSum, r.ScrapeAtEnd.InferTimeSum,
-		r.ScrapeAtStart.InferTimeCount, r.ScrapeAtEnd.InferTimeCount)
-	if inferMean > 0 && queueMean > inferMean {
+	// Queue dominance: time spent queueing exceeds time spent inferring.
+	if inferMeanSec > 0 && queueMeanSec > inferMeanSec {
 		return evaluator.SaturationOverload
 	}
-
 	return evaluator.SaturationNone
 }
 

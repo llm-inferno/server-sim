@@ -20,6 +20,8 @@ go run ./queue-analysis-evaluator          # requires MODEL_DATA_FILE
 cd blis-evaluator && BLIS_CONFIG_FILE=blis-config.json HW_CONFIG_FILE=/path/to/hardware_config.json go run .
 # vllm-server (requires VLLM_EVAL_CONFIG_FILE and a paired vLLM pod)
 VLLM_EVAL_CONFIG_FILE=vllm-server-evaluator/vllm-eval-config.json go run ./vllm-server-evaluator
+# continuous-vllm-server (same config + paired vLLM pod; persistent loop, trailing-window /solve)
+VLLM_EVAL_CONFIG_FILE=continuous-vllm-server-evaluator/vllm-eval-config.example.json go run ./continuous-vllm-server-evaluator
 ```
 
 Run tests:
@@ -63,6 +65,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 | `queue-analysis-evaluator/` | Analytical state-dependent Markovian model via `llm-inferno/queue-analysis`; loads Alpha/Beta/Gamma from `model-data.json` keyed by `acc`+`name` |
 | `blis-evaluator/` | Discrete-event simulation via `inference-sim/BLIS`; loads KV/batch/hardware params from `blis-config.json`; latency backend controlled by `LATENCY_BACKEND` (default: `roofline`; also: `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics`) |
 | `vllm-server-evaluator/` | Drives a real paired vLLM server (open-loop Poisson + streaming TTFT/ITL); pairing established by control-loop Actuator via labels |
+| `continuous-vllm-server-evaluator/` | Variant of `vllm-server`: a **persistent** arrival loop (never stops); `/solve` reconfigures live load/concurrency (resizable limiter) and reports a **trailing window** (`trailingWindowSec`). Drop-in `/solve` contract; shares pairing/RBAC/config/aggregation/saturation with `vllm-server` for windowed-vs-continuous A/B. Self-contained copy of the shared primitives (baseline left untouched). |
 
 ### Important invariants
 
@@ -95,6 +98,8 @@ blis-evaluator additional vars: `BLIS_CONFIG_FILE`, `HW_CONFIG_FILE`, `LATENCY_B
 queue-analysis-evaluator additional vars: `MODEL_DATA_FILE`, `DEFAULT_MAX_QUEUE_SIZE`, `EVALUATOR_PORT`.
 
 vllm-server-evaluator additional vars: `VLLM_EVAL_CONFIG_FILE`, `POD_NAMESPACE`, `VLLM_NAMESPACE`, `EVALUATOR_PORT`.
+
+continuous-vllm-server-evaluator additional vars: **same as vllm-server-evaluator** (`VLLM_EVAL_CONFIG_FILE`, `POD_NAMESPACE`, `VLLM_NAMESPACE`, `EVALUATOR_PORT`) — no new env vars. Adds one per-entry config-file field, `trailingWindowSec` (trailing observation window in seconds; `≤0` → 30).
 
 ## Module
 

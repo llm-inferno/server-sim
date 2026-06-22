@@ -28,7 +28,7 @@ flowchart TD
     Noise -->|store result| Jobs
 ```
 
-Four evaluator backends are available, each implementing the same `POST /solve` interface:
+Five evaluator backends are available, each implementing the same `POST /solve` interface:
 
 | Phase | Evaluator | Approach |
 |-------|-----------|----------|
@@ -36,6 +36,7 @@ Four evaluator backends are available, each implementing the same `POST /solve` 
 | 2 | [Queue-Analysis](#phase-2-queue-analysis-evaluator) | Analytical state-dependent Markovian queue model |
 | 3 | [BLIS](#phase-3-blis-discrete-event-simulator-evaluator) | Discrete-event simulation |
 | 4 | [vllm-server](docs/vllm-server-evaluator.md) | Drives a real paired vLLM server (open-loop Poisson) |
+| 5 | [continuous-vllm-server](#phase-5-continuous-vllm-server-evaluator) | Persistent traffic loop against a paired vLLM; `/solve` reconfigures and reports a trailing window |
 
 ## Evaluator Interface
 
@@ -482,3 +483,17 @@ Each entry in the `configs` array configures one `accelerator + model` pair:
 The Actuator establishes pairing by writing `inferno.server.pair-id=<uuid>` on exactly one managed pod and one vLLM pod. The evaluator reads its own `pair-id` from a downward-API volume at `/etc/podinfo/labels`, then queries the K8s API to find the matching vLLM pod. If the label is absent or no Ready vLLM pod matches, `/solve` returns `503`.
 
 The full Actuator contract (replica lockstep, label ordering, reconciliation on pod replacement) is documented in [docs/vllm-server-evaluator.md](docs/vllm-server-evaluator.md#pairing--actuator-contract).
+
+---
+
+## Phase 5: continuous-vllm-server Evaluator
+
+`continuous-vllm-server` is a variant of `vllm-server` for the same real-vLLM setup, differing only in **when** traffic runs and **what a measurement covers**. Instead of running a fresh bounded window per `/solve`, it runs a **persistent** arrival loop that never stops generating traffic against the paired vLLM. `/solve` becomes a fast "reconfigure and report" call: it atomically swaps the live load parameters (`RPS`, token sizes) and concurrency (`maxConcurrency`/M\*, via a live-resizable limiter) from `ProblemData`, then returns metrics aggregated over a fixed **trailing window** of the last `trailingWindowSec` seconds.
+
+This keeps the paired vLLM under continuous, steady-state load (no per-window warmup/drain sawtooth) and decouples the control period from the window width. It is a drop-in `/solve` backend — the wire contract (`ProblemData` → `AnalysisData`), pairing, RBAC, and config file are identical to `vllm-server`; only the loop model and the meaning of a measurement differ. Shared semantics (aggregation, saturation thresholds, token sampling, `/metrics` parsing) match `vllm-server` so windowed-vs-continuous A/B differences are attributable to the loop model.
+
+See [docs/vllm-server-evaluator.md → Continuous variant](docs/vllm-server-evaluator.md#continuous-variant-continuous-vllm-server) for the operational differences and the `trailingWindowSec` config field. Select the backend at deploy time with `evaluator.sh continuous-vllm-server`. Run it locally exactly like `vllm-server`, pointing at the same config format:
+
+```bash
+VLLM_EVAL_CONFIG_FILE=continuous-vllm-server-evaluator/vllm-eval-config.example.json go run ./continuous-vllm-server-evaluator
+```
