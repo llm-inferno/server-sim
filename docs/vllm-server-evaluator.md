@@ -14,6 +14,46 @@ in [`docs/superpowers/specs/2026-05-28-vllm-server-evaluator-design.md`](superpo
 1:1 with the evaluator's pod. Pairing is established by the **control-loop
 Actuator** via labels and discovered by the evaluator via the K8s API.
 
+## Continuous variant (`continuous-vllm-server`)
+
+`continuous-vllm-server` (binary `continuous-vllm-server-evaluator/`) is a
+sibling backend that shares this evaluator's pairing, RBAC, config file,
+aggregation math, and saturation logic, but changes the **traffic model**:
+
+- **Persistent loop, not per-window.** Instead of running a fresh
+  warmup+window on each `/solve`, it runs one continuous arrival loop that
+  never stops driving the paired vLLM. `/solve` is a fast "reconfigure and
+  report" RPC: it atomically swaps the live `RPS`, token-size samplers, and
+  concurrency (a live-resizable limiter, so M\* changes apply without
+  restarting the loop), then returns immediately.
+- **Trailing window, not a closed window.** Metrics cover the last
+  `trailingWindowSec` seconds of completed requests (a time-bounded ring
+  buffer); queue/inference means come from `/metrics` deltas across that
+  trailing interval rather than per-window start/end bookends. `AvgWaitTime`
+  is therefore sourced differently and is **not directly comparable** to the
+  windowed backend — attribute differences to the loop model.
+- **One-time warmup.** `warmupSec` applies once, anchored at the first accepted
+  arrival (when traffic actually begins), not at the start of every window. It
+  is anchored at first arrival rather than loop start because the loop spins up
+  at process start but idles until it is both configured and paired — a wait
+  that can exceed `warmupSec`, which would otherwise let the window lapse before
+  any traffic and discard nothing.
+
+It reads the same config file (below) plus one field used **only** by this
+variant:
+
+| Field | Description |
+|---|---|
+| `trailingWindowSec` | width of the trailing observation window in seconds; `≤0` defaults to `30`. Ignored by the windowed `vllm-server` backend. |
+
+`minWindowSec`, `maxWindowSec`, and `targetSamples` are not used by the
+continuous variant (window length is the trailing width, decoupled from the
+control period). Select it at deploy time with
+`evaluator.sh continuous-vllm-server`; it reads the same environment variables
+as `vllm-server` (no new ones). It exists for windowed-vs-continuous A/B on
+real vLLM; shared semantics are kept faithful so differences are attributable
+to the loop model.
+
 ## Configuration
 
 `vllm-eval-config.json` is keyed by `accelerator|model`. See
