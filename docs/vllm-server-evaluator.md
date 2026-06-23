@@ -32,8 +32,10 @@ aggregation math, and saturation logic, but changes the **traffic model**:
   trailing interval rather than per-window start/end bookends. `AvgWaitTime`
   is therefore sourced differently and is **not directly comparable** to the
   windowed backend — attribute differences to the loop model.
-- **One-time warmup.** `warmupSec` applies once, anchored at the first accepted
-  arrival (when traffic actually begins), not at the start of every window. It
+- **One-time warmup.** `warmupSec` applies once, anchored at the first generated
+  arrival (when traffic actually begins), not at the start of every window. (The
+  first generated arrival is also the first accepted, since the limiter starts
+  empty; anchoring here lets that arrival be counted as offered load.) It
   is anchored at first arrival rather than loop start because the loop spins up
   at process start but idles until it is both configured and paired — a wait
   that can exceed `warmupSec`, which would otherwise let the window lapse before
