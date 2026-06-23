@@ -38,6 +38,20 @@ aggregation math, and saturation logic, but changes the **traffic model**:
   at process start but idles until it is both configured and paired — a wait
   that can exceed `warmupSec`, which would otherwise let the window lapse before
   any traffic and discard nothing.
+- **Window-averaged offered load.** Because the live `RPS` can change between
+  `/solve` calls, the offered load reported back is **averaged over the same
+  trailing window** as throughput/latency — not the instantaneous setpoint of
+  the latest `/solve`. The loop records every generated arrival (before the
+  concurrency limiter, so limiter-dropped arrivals still count as offered
+  demand) into a time-bounded ring; `/solve` divides the in-window count by the
+  window width. This keeps the `(offered, throughput, latency)` triple the
+  control loop consumes temporally consistent, so its queueing model (and the
+  EKF tuner) fits observed metrics against the offered load that actually
+  produced them. The value is returned as `AnalysisData.offeredRPS` and surfaces
+  as `effectiveInput.RPS` in the `/latest` envelope; throughput is capped at it
+  (the goodput ≤ offered invariant) against this same window average. The
+  windowed `vllm-server` backend runs at a single fixed `RPS` per window, so its
+  offered load already equals the window average and it leaves `offeredRPS` unset.
 
 It reads the same config file (below) plus one field used **only** by this
 variant:

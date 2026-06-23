@@ -23,12 +23,13 @@ type liveConfig struct {
 }
 
 type generator struct {
-	live    atomic.Pointer[liveConfig]
-	pairing atomic.Pointer[pairingState]
-	lim     *limiter
-	ring    *sampleRing
-	scrapes *scrapeRing
-	lookup  map[string]serverConfig
+	live     atomic.Pointer[liveConfig]
+	pairing  atomic.Pointer[pairingState]
+	lim      *limiter
+	ring     *sampleRing
+	arrivals *arrivalRing
+	scrapes  *scrapeRing
+	lookup   map[string]serverConfig
 
 	baseURLOverride string        // test hook; empty in production
 	warmup          time.Duration // one-time warmup, anchored at the first accepted arrival; samples completing before it are dropped
@@ -48,12 +49,13 @@ func newGenerator(lookup map[string]serverConfig) *generator {
 		}
 	}
 	return &generator{
-		lim:     newLimiter(evaluator.DefaultMaxConcurrency),
-		ring:    newSampleRing(retain, 200_000),
-		scrapes: newScrapeRing(256),
-		lookup:  lookup,
-		runOne:  runOneRequest,
-		scrape:  scrapeMetrics,
+		lim:      newLimiter(evaluator.DefaultMaxConcurrency),
+		ring:     newSampleRing(retain, 200_000),
+		arrivals: newArrivalRing(retain, 200_000),
+		scrapes:  newScrapeRing(256),
+		lookup:   lookup,
+		runOne:   runOneRequest,
+		scrape:   scrapeMetrics,
 	}
 }
 
@@ -100,6 +102,16 @@ func (g *generator) runLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(gap):
+		}
+
+		// Record offered demand for the trailing-window average BEFORE the limiter,
+		// so arrivals the limiter drops still count (they are offered load, not
+		// served load). Gate on warmup so offered and throughput share the same
+		// post-warmup window: samples completing before warmupEnd are dropped below,
+		// so arrivals generated before it must be excluded too.
+		arrivalNow := time.Now()
+		if !warmupEnd.IsZero() && !arrivalNow.Before(warmupEnd) {
+			g.arrivals.add(arrivalNow)
 		}
 
 		if !g.lim.tryAcquire() {

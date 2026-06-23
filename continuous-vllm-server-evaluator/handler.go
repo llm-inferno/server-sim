@@ -97,7 +97,15 @@ func (g *generator) solve(ctx context.Context, pd evaluator.ProblemData) (evalua
 			fmt.Errorf("insufficient samples: need %d, got %d", sc.MinSamples, completed)
 	}
 
-	ad := aggregateTrailing(samples, pd.RPS, windowSec, queueMeanSec)
+	// Offered load averaged over the same window as throughput/latency, so the
+	// reported (offered, throughput, latency) triple is temporally consistent —
+	// instead of pairing window-averaged metrics with the instantaneous setpoint.
+	offeredAvg := 0.0
+	if windowSec > 0 {
+		offeredAvg = float64(g.arrivals.count(now, time.Duration(windowSec)*time.Second)) / windowSec
+	}
+
+	ad := aggregateTrailing(samples, offeredAvg, windowSec, queueMeanSec)
 	ad.Saturation = detectSaturationTrailing(samples, sc.MinSamples, queueMeanSec, inferMeanSec)
 	return ad, http.StatusOK, nil
 }
