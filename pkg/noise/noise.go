@@ -31,6 +31,10 @@ func AddNoise(ad evaluator.AnalysisData, cfg Config) evaluator.AnalysisData {
 		AvgTTFT:     perturb(ad.AvgTTFT),
 		AvgITL:      perturb(ad.AvgITL),
 		MaxRPS:      perturb(ad.MaxRPS),
-		Saturation:  ad.Saturation,
+		// OfferedRPS is the offered-load setpoint measured over the window, not a
+		// noisy server metric — copy it through unperturbed (like Saturation) so it
+		// survives noise injection instead of being silently dropped.
+		OfferedRPS: ad.OfferedRPS,
+		Saturation: ad.Saturation,
 	}
 }

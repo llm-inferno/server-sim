@@ -35,6 +35,23 @@ func TestAddNoise_PreservesSaturationField(t *testing.T) {
 	}
 }
 
+// TestAddNoise_PreservesOfferedRPS guards against AddNoise silently dropping the
+// window-averaged offered load: it is a measured setpoint, not a noisy server
+// metric, so it must pass through unperturbed (like Saturation) rather than be
+// zeroed when noise runs.
+func TestAddNoise_PreservesOfferedRPS(t *testing.T) {
+	cfg := Config{StdFraction: 0.5} // large noise so a perturb/drop would be obvious
+	ad := evaluator.AnalysisData{
+		Throughput: 10,
+		OfferedRPS: 42.5,
+	}
+	for i := 0; i < 20; i++ {
+		if got := AddNoise(ad, cfg).OfferedRPS; got != 42.5 {
+			t.Fatalf("OfferedRPS = %v, want 42.5 (passed through unperturbed)", got)
+		}
+	}
+}
+
 func TestAddNoise_PerturbsNonZeroFields(t *testing.T) {
 	// Fix the seed so the test is deterministic. With StdFraction=0.5 and
 	// NormFloat64 != 0 (which is almost certain over many runs), the noisy

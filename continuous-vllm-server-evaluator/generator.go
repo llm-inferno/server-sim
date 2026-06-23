@@ -104,26 +104,32 @@ func (g *generator) runLoop(ctx context.Context) {
 		case <-time.After(gap):
 		}
 
+		// Anchor the one-time warmup window at the first generated arrival, i.e.
+		// when traffic actually begins — not at loop start. The loop is spun up
+		// at process start but idles (above) until it is both configured and
+		// paired, which can take longer than warmup; anchoring at start would
+		// let the window elapse during that idle wait and drop nothing. This is
+		// set BEFORE recording the arrival below so the very first arrival is
+		// gated against an already-set warmupEnd; otherwise it would be silently
+		// dropped (warmupEnd still zero) and never counted as offered. At loop
+		// start the limiter is empty, so the first generated arrival is always
+		// accepted — anchoring here is equivalent to anchoring at first accept.
+		arrivalNow := time.Now()
+		if warmupEnd.IsZero() {
+			warmupEnd = arrivalNow.Add(g.warmup)
+		}
+
 		// Record offered demand for the trailing-window average BEFORE the limiter,
 		// so arrivals the limiter drops still count (they are offered load, not
 		// served load). Gate on warmup so offered and throughput share the same
 		// post-warmup window: samples completing before warmupEnd are dropped below,
 		// so arrivals generated before it must be excluded too.
-		arrivalNow := time.Now()
-		if !warmupEnd.IsZero() && !arrivalNow.Before(warmupEnd) {
+		if !arrivalNow.Before(warmupEnd) {
 			g.arrivals.add(arrivalNow)
 		}
 
 		if !g.lim.tryAcquire() {
 			continue // drop excess arrival, exactly like the windowed semaphore
-		}
-		// Anchor the one-time warmup window at the first accepted arrival, i.e.
-		// when traffic actually begins — not at loop start. The loop is spun up
-		// at process start but idles (above) until it is both configured and
-		// paired, which can take longer than warmup; anchoring at start would
-		// let the window elapse during that idle wait and drop nothing.
-		if warmupEnd.IsZero() {
-			warmupEnd = time.Now().Add(g.warmup)
 		}
 		dropBefore := warmupEnd // capture by value; never mutated after the first arrival
 		spec := requestSpec{
