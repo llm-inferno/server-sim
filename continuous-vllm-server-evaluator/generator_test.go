@@ -104,6 +104,82 @@ func TestRunLoop_WarmupAnchorsAtFirstArrival(t *testing.T) {
 	}
 }
 
+// TestRunLoop_CountsOfferedArrivalsIncludingDrops proves the arrival ring records
+// offered demand BEFORE the limiter: with rps far above what a 2-slot limiter can
+// serve, the loop drops most arrivals, yet they must still be counted as offered.
+// So the arrival count must exceed the number of completed samples.
+func TestRunLoop_CountsOfferedArrivalsIncludingDrops(t *testing.T) {
+	g := newGenerator(nil)
+	g.baseURLOverride = "http://fake"
+	g.runOne = func(ctx context.Context, _, _ string, _ requestSpec, _ int64) sample {
+		time.Sleep(20 * time.Millisecond) // slow service ⇒ limiter stays full ⇒ drops
+		return sample{TTFT: time.Millisecond, ResponseTime: time.Millisecond}
+	}
+	g.live.Store(&liveConfig{
+		rps:         500,
+		concurrency: 2,
+		inSampler:   fixedSampler{v: 8},
+		outSampler:  fixedSampler{v: 8},
+		servedModel: "m",
+		windowSec:   30,
+		minSamples:  1,
+	})
+	g.lim.setLimit(2)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	g.runLoop(ctx)
+
+	now := time.Now()
+	offered := g.arrivals.count(now, 30*time.Second)
+	served := len(g.ring.snapshot(now, 30*time.Second))
+	if offered == 0 {
+		t.Fatal("expected the loop to record offered arrivals")
+	}
+	if offered <= served {
+		t.Fatalf("offered arrivals (%d) must exceed served samples (%d): drops are offered load", offered, served)
+	}
+}
+
+// TestRunLoop_OfferedRateTracksLiveRPS proves the offered-load measurement follows
+// the live rate as it changes mid-run, rather than snapping to either endpoint:
+// the loop runs at r1 then r2, and the window-averaged offered rate must land
+// strictly between the two.
+func TestRunLoop_OfferedRateTracksLiveRPS(t *testing.T) {
+	const (
+		r1     = 100.0
+		r2     = 400.0
+		phase  = 300 * time.Millisecond
+		window = 5 * time.Second
+	)
+	g := newGenerator(nil)
+	g.baseURLOverride = "http://fake"
+	g.runOne = func(ctx context.Context, _, _ string, _ requestSpec, _ int64) sample {
+		return sample{TTFT: time.Millisecond, ResponseTime: time.Millisecond} // fast ⇒ no drops
+	}
+	cfg := func(rps float64) *liveConfig {
+		return &liveConfig{rps: rps, concurrency: 64, inSampler: fixedSampler{v: 8}, outSampler: fixedSampler{v: 8}, servedModel: "m", windowSec: 30, minSamples: 1}
+	}
+	g.live.Store(cfg(r1))
+	g.lim.setLimit(64)
+
+	go func() {
+		time.Sleep(phase)
+		g.live.Store(cfg(r2)) // swap to the higher rate halfway through
+	}()
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*phase)
+	defer cancel()
+	g.runLoop(ctx)
+
+	elapsed := time.Since(start).Seconds()
+	rate := float64(g.arrivals.count(time.Now(), window)) / elapsed
+	if rate <= r1 || rate >= r2 {
+		t.Fatalf("offered rate = %.1f/s, want strictly between r1=%.0f and r2=%.0f (mid-run rate change)", rate, r1, r2)
+	}
+}
+
 func TestRunLoop_IdlesWhenUnconfigured(t *testing.T) {
 	g := newGenerator(nil)
 	g.baseURLOverride = "http://fake"

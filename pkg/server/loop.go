@@ -74,6 +74,15 @@ func (l *Loop) runOnce(parent context.Context) {
 		}
 		return
 	}
+	// When the evaluator measured a window-averaged offered load (continuous
+	// backend), report that as the effective offered rate instead of the
+	// instantaneous setpoint, so /latest pairs window-averaged metrics with a
+	// window-averaged offered load. Other backends leave OfferedRPS at 0 (and the
+	// retry-at-lower-load policy sets eff.RPS itself), so the guard leaves them
+	// untouched.
+	if result.OfferedRPS > 0 {
+		eff.RPS = result.OfferedRPS
+	}
 	l.jobs.Complete(id, eff, result)
 }
 

@@ -59,10 +59,12 @@ When a `/solve` request arrives, the evaluator looks up the entry matching the r
 
 ### Noise Injection
 
-server-sim applies Gaussian noise to each metric returned by the evaluator. This mimics realistic disturbances and modeling error. Noise is:
+server-sim applies Gaussian noise to each measured metric returned by the evaluator. This mimics realistic disturbances and modeling error. Noise is:
 - Configured per metric as a fraction (standard deviation / mean)
 - Disabled by default; enabled via `NOISE_ENABLED=true`
 - Applied after the evaluator responds, before the job result is stored
+
+The `saturation` flag and the `offeredRPS` field are **not** noisy server metrics (they are a status flag and a measured offered-load setpoint), so they pass through unperturbed.
 
 ## API Reference
 

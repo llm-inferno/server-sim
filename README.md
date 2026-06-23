@@ -40,7 +40,7 @@ Five evaluator backends are available, each implementing the same `POST /solve` 
 
 ## Evaluator Interface
 
-All backends share the same REST contract: `POST /solve` accepts a `ProblemData` body (`RPS`, `maxConcurrency`, `avgInputTokens`, `avgOutputTokens`, `accelerator`, `model`) and returns `AnalysisData` (`throughput`, `avgRespTime`, `avgWaitTime`, `avgTTFT`, `avgITL`, `maxRPS`, `saturation`).
+All backends share the same REST contract: `POST /solve` accepts a `ProblemData` body (`RPS`, `maxConcurrency`, `avgInputTokens`, `avgOutputTokens`, `accelerator`, `model`) and returns `AnalysisData` (`throughput`, `avgRespTime`, `avgWaitTime`, `avgTTFT`, `avgITL`, `maxRPS`, `saturation`, and the optional `offeredRPS` — the window-averaged offered load, set only by `continuous-vllm-server`).
 
 Evaluator-specific parameters (latency coefficients, KV cache size, etc.) are never exposed in the request — each backend resolves them internally from its own config file keyed by `accelerator + model`.
 

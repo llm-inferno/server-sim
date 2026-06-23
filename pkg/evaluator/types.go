@@ -35,6 +35,12 @@ type AnalysisData struct {
 	AvgTTFT     float32 `json:"avgTTFT"`     // average time-to-first-token (ms)
 	AvgITL      float32 `json:"avgITL"`      // average inter-token latency (ms)
 	MaxRPS      float32 `json:"maxRPS"`      // maximum stable request rate (req/sec)
+	// OfferedRPS is the offered arrival rate (req/sec) averaged over the same window
+	// as Throughput/latency, so the (offered, throughput, latency) triple is
+	// temporally consistent. Set only by backends that measure a window-average
+	// offered rate (continuous-vllm-server); 0/omitted means not measured — callers
+	// then fall back to the commanded ProblemData.RPS.
+	OfferedRPS float32 `json:"offeredRPS,omitempty"`
 	// Saturation is set when the offered load exceeds server capacity. One of the
 	// SaturationXxx constants; empty (omitted from JSON) means not saturated.
 	// When set, latency metrics may be zero (BLIS pre-sim, DES skipped) or reflect
