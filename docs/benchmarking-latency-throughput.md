@@ -84,3 +84,13 @@ python3 scripts/benchmark_curve.py \
 Output lands in `scripts/benchmark_results/curve_<timestamp>.{csv,md,png}`
 (PNG requires `matplotlib`; pass `--no-plot` to skip). Run
 `python3 scripts/benchmark_curve.py --help` for the full flag list.
+
+## Validation
+
+This tool was used to produce real-vs-simulated latency–throughput curves for
+Qwen2.5-14B-Instruct on an H100: it drove a live vLLM server (continuous-vllm-server
+evaluator) and, unchanged, the BLIS and queue-analysis evaluators over the same
+arrival-rate grid. The real server's measured ceiling (~7 req/s) was bracketed by
+both simulators, confirming the sweep/settle protocol and the loss-system metrics
+end to end. (A full write-up with manifests, data, and graphs is kept as an example
+run under `docs/example-runs/`.)
