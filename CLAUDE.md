@@ -41,7 +41,7 @@ server-sim is an async job broker that delegates to a pluggable evaluator backen
 
 ### Continuous mode
 
-When `SERVERSIM_CONTINUOUS=true`, server-sim starts a background ticker loop (`pkg/server/loop.go`) that runs evaluation windows back-to-back, one at a time. Each tick it reads the current workload (`rpm`, `intokens`, `outtokens`, `model`, `accelerator`, `maxbatchsize`) from the downward-API labels file at `<SERVERSIM_LABELS_DIR>/labels`, converts it to a `ProblemData`, and calls `solveWithPolicy` with the configured saturation policy. The saturation policy (`retry-at-lower-load` or `pass-through`) works identically to the on-demand path. When the `maxbatchsize` label changes between ticks, the in-flight window is cancelled immediately so the next window runs under the new concurrency without waiting for the old window to finish.
+When `SERVERSIM_CONTINUOUS=true`, server-sim starts a background ticker loop (`pkg/server/loop.go`) that runs evaluation windows back-to-back, one at a time. Each tick it reads the current workload (`rpm`, `intokens`, `outtokens`, `model`, `accelerator`, `maxbatchsize`) from the downward-API labels file at `<SERVERSIM_LABELS_DIR>/labels`, converts it to a `ProblemData`, and calls `solveWithPolicy` with the configured saturation policy. The saturation policy (`retry-at-lower-load` or `pass-through`) works identically to the on-demand path. A `maxbatchsize` change is picked up by the next tick, which reads the updated label and runs the following window under the new concurrency.
 
 The result is stored in the job store and served by `GET /latest`. `POST /simulate` remains fully functional alongside continuous mode; the two paths coexist and share the same job store.
 

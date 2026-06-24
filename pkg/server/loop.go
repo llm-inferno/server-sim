@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"log"
 	"path/filepath"
 	"time"
@@ -39,11 +38,10 @@ func (l *Loop) Run(ctx context.Context) {
 }
 
 // runOnce executes a single window. It reads the current labels, creates a job,
-// runs the window (cancelling it if the allocation concurrency changes
-// mid-flight), and stores the effective input + result. Silently skips when the
-// pod is not yet ready or the window fails — the Collector handles the
+// runs the window, and stores the effective input + result. Silently skips when
+// the pod is not yet ready or the window fails — the Collector handles the
 // resulting absence/staleness.
-func (l *Loop) runOnce(parent context.Context) {
+func (l *Loop) runOnce(ctx context.Context) {
 	labels, err := ReadLabels(l.labelsPath)
 	if err != nil {
 		return // not ready
@@ -54,24 +52,11 @@ func (l *Loop) runOnce(parent context.Context) {
 	}
 
 	id := l.jobs.Create()
-	ctx, cancel := context.WithCancel(parent)
-	defer cancel()
-
-	// Watch for an allocation change; cancel the in-flight window so the next
-	// window runs under the new concurrency promptly.
-	startConc := pd.MaxConcurrency
-	go l.watchAllocation(ctx, cancel, startConc)
 
 	eff, result, err := solveWithPolicy(ctx, l.cli, l.cfg.SaturationPolicy, pd)
 	if err != nil {
 		l.jobs.Fail(id, err.Error())
-		// A cancelled window is the watcher abandoning it on an allocation
-		// change, not a solver failure — distinguish the two in the log.
-		if errors.Is(err, context.Canceled) {
-			log.Printf("loop: window abandoned (allocation changed mid-flight): %v", err)
-		} else {
-			log.Printf("loop: window failed (skipping publish): %v", err)
-		}
+		log.Printf("loop: window failed (skipping publish): %v", err)
 		return
 	}
 	// When the evaluator measured a window-averaged offered load (continuous
@@ -84,23 +69,4 @@ func (l *Loop) runOnce(parent context.Context) {
 		eff.RPS = result.OfferedRPS
 	}
 	l.jobs.Complete(id, eff, result)
-}
-
-// watchAllocation polls the labels file and cancels when maxbatchsize changes
-// from startConc. Returns when ctx is done.
-func (l *Loop) watchAllocation(ctx context.Context, cancel context.CancelFunc, startConc int) {
-	t := time.NewTicker(time.Second)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			if cur, ok := concurrencyFromFile(l.labelsPath); ok && cur != startConc {
-				log.Printf("loop: allocation changed %d -> %d; abandoning in-flight window", startConc, cur)
-				cancel()
-				return
-			}
-		}
-	}
 }
