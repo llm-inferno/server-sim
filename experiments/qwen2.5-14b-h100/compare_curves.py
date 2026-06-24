@@ -73,7 +73,9 @@ def main():
         return
 
     styles = ["o-", "s--", "^:", "d-."]
-    fig, ax = plt.subplots(1, 4, figsize=(21, 4.5))
+    # 2x2 grid (top: throughput, ITL; bottom: TTFT, concurrency) — legible in the report.
+    fig, ax = plt.subplots(2, 2, figsize=(13, 9))
+    ax = ax.ravel()
     for idx, (label, data) in enumerate(series):
         st = styles[idx % len(styles)]
         rps = [r["rps"] for r in data]

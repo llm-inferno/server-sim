@@ -26,7 +26,7 @@ Headline results:
 
 ![Three-way comparison](results/comparison.png)
 
-*Four panels, left to right: throughput vs offered load, ITL vs throughput, TTFT vs throughput (log y), and avg concurrency vs throughput (Little's law `L = X·W`, using the served throughput). Real = solid, BLIS = dashed, queue-analysis = dotted.*
+*Four panels (2×2). Top row: throughput vs offered load, ITL vs throughput. Bottom row: TTFT vs throughput (log y), avg concurrency vs throughput (Little's law `L = X·W`, using the served throughput). Real = solid, BLIS = dashed, queue-analysis = dotted.*
 
 ---
 
