@@ -214,13 +214,12 @@ func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisS
 	kvBytesPerToken := estimateKVBytesPerToken(mc)
 	bwBytesPerSec := hc.BwPeakTBs * float64(tp) * 1e12
 	if outTokens > 0 && weightBytes > 0 && bwBytesPerSec > 0 && batch > 0 {
+		// tStep > 0 is guaranteed: weightBytes > 0 and bwBytesPerSec > 0.
 		tStep := (weightBytes + batch*avgContext*kvBytesPerToken) / bwBytesPerSec
-		if tStep > 0 {
-			decodeTPS := batch / tStep
-			demandTPS := float64(pd.RPS) * outTokens
-			if demandTPS > decodeTPS*saturationMargin {
-				return evaluator.SaturationBandwidth, float32(decodeTPS / outTokens)
-			}
+		decodeTPS := batch / tStep
+		demandTPS := float64(pd.RPS) * outTokens
+		if demandTPS > decodeTPS*saturationMargin {
+			return evaluator.SaturationBandwidth, float32(decodeTPS / outTokens)
 		}
 	}
 
@@ -241,7 +240,7 @@ func estimateKVBytesPerToken(mc *blisSim.ModelConfig) float64 {
 		headDim = int64(mc.HiddenDim) / int64(mc.NumHeads)
 	}
 	// 2 = K and V tensors.
-	return 2.0 * float64(int64(numKVHeads)) * float64(headDim) * float64(int64(mc.NumLayers)) * mc.EffectiveWeightBytesPerParam()
+	return 2.0 * float64(numKVHeads) * float64(headDim) * float64(mc.NumLayers) * mc.EffectiveWeightBytesPerParam()
 }
 
 // estimateWeightBytes returns a conservative estimate of total model weight
