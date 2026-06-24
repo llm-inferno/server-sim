@@ -116,7 +116,7 @@ python3 scripts/benchmark_curve.py --eval-url http://localhost:8081 \
   --model qwen_2_5_14b --accelerator H100 \
   --in-tokens 1024 --out-tokens 512 --max-concurrency 256 \
   --window-sec 90 --seed-from empirical --rps-seed 1.0 --points 10 \
-  --out-dir docs/example-runs/qwen2.5-14b-h100/results
+  --out-dir experiments/qwen2.5-14b-h100/results
 ```
 
 Result (`results/curve_20260624_114204.{csv,md,png}`): **throughput ceiling ≈ 7 req/s**,
@@ -168,13 +168,13 @@ python3 scripts/benchmark_curve.py --eval-url http://localhost:8091 \
   --in-tokens 1024 --out-tokens 512 --max-concurrency 256 \
   --seed-from manual --rps-min 0.7594 --rps-max 9.8719 --points 10 \
   --window-sec 0 --margin-sec 0 --min-samples 0 --reads 1 --warmup-sec 0 \
-  --out-dir docs/example-runs/qwen2.5-14b-h100/results/blis-sim
+  --out-dir experiments/qwen2.5-14b-h100/results/blis-sim
 
-python3 docs/example-runs/qwen2.5-14b-h100/compare_curves.py \
-  real=docs/example-runs/qwen2.5-14b-h100/results/curve_20260624_114204.csv \
-  blis=docs/example-runs/qwen2.5-14b-h100/results/blis-sim/curve_20260624_121115.csv \
-  qa=docs/example-runs/qwen2.5-14b-h100/results/qa-sim/curve_20260624_121825.csv \
-  --out-dir docs/example-runs/qwen2.5-14b-h100/results
+python3 experiments/qwen2.5-14b-h100/compare_curves.py \
+  real=experiments/qwen2.5-14b-h100/results/curve_20260624_114204.csv \
+  blis=experiments/qwen2.5-14b-h100/results/blis-sim/curve_20260624_121115.csv \
+  qa=experiments/qwen2.5-14b-h100/results/qa-sim/curve_20260624_121825.csv \
+  --out-dir experiments/qwen2.5-14b-h100/results
 ```
 
 ### 6. Queue-analysis (analytic) sweep
@@ -190,7 +190,7 @@ python3 scripts/benchmark_curve.py --eval-url http://localhost:8092 \
   --in-tokens 1024 --out-tokens 512 --max-concurrency 256 \
   --seed-from manual --rps-min 0.7594 --rps-max 9.8719 --points 10 \
   --window-sec 0 --margin-sec 0 --min-samples 0 --reads 1 --warmup-sec 0 \
-  --out-dir docs/example-runs/qwen2.5-14b-h100/results/qa-sim
+  --out-dir experiments/qwen2.5-14b-h100/results/qa-sim
 ```
 
 ## Findings

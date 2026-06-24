@@ -93,4 +93,4 @@ evaluator) and, unchanged, the BLIS and queue-analysis evaluators over the same
 arrival-rate grid. The real server's measured ceiling (~7 req/s) was bracketed by
 both simulators, confirming the sweep/settle protocol and the loss-system metrics
 end to end. A full write-up with manifests, data, and graphs is kept as an example
-run: [`docs/example-runs/qwen2.5-14b-h100/`](example-runs/qwen2.5-14b-h100/REPORT.md).
+run: [`experiments/qwen2.5-14b-h100/`](../experiments/qwen2.5-14b-h100/REPORT.md).

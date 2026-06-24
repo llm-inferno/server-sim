@@ -85,9 +85,11 @@ def main():
     ax[0].plot(ref_rps, ref_rps, ":", color="gray", label="offered=served")
     ax[0].set(xlabel="offered RPS", ylabel="throughput (req/s)", title="Throughput vs offered")
     ax[1].set(xlabel="throughput (req/s)", ylabel="ITL (ms)", title="ITL vs throughput")
-    ax[2].set(xlabel="throughput (req/s)", ylabel="TTFT (ms)", title="TTFT vs throughput")
+    # TTFT spans ~40 ms (low load) to ~10 s (saturation); log y keeps both ends readable.
+    ax[2].set(xlabel="throughput (req/s)", ylabel="TTFT (ms, log scale)", title="TTFT vs throughput")
+    ax[2].set_yscale("log")
     for a in ax:
-        a.legend(); a.grid(True, alpha=0.3)
+        a.legend(); a.grid(True, alpha=0.3, which="both")
     fig.suptitle(args.title)
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(out / "comparison.png", dpi=120)
