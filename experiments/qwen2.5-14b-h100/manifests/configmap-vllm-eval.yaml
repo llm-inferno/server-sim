@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vllm-server-eval-config
+  namespace: inferno-workload
+data:
+  vllm-eval-config.json: |
+    {
+      "configs": [
+        {
+          "accelerator": "H100",
+          "model": "qwen_2_5_14b",
+          "vllmServedModelName": "qwen",
+          "vllmPort": 8000,
+          "warmupSec": 0,
+          "minWindowSec": 60,
+          "maxWindowSec": 60,
+          "targetSamples": 0,
+          "trailingWindowSec": 90,
+          "minSamples": 3,
+          "ignoreEOS": true,
+          "queueTimeMetric": "vllm:request_queue_time_seconds",
+          "inputTokenDistribution":  "uniform-bounded",
+          "outputTokenDistribution": "uniform-bounded"
+        },
+        {
+          "accelerator": "H100",
+          "model": "llama_3_1_8b",
+          "vllmServedModelName": "llama",
+          "vllmPort": 8000,
+          "warmupSec": 0,
+          "minWindowSec": 60,
+          "maxWindowSec": 60,
+          "targetSamples": 0,
+          "trailingWindowSec": 90,
+          "minSamples": 3,
+          "ignoreEOS": true,
+          "queueTimeMetric": "vllm:request_queue_time_seconds",
+          "inputTokenDistribution":  "uniform-bounded",
+          "outputTokenDistribution": "uniform-bounded"
+        }
+      ]
+    }

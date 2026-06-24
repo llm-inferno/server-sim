@@ -26,3 +26,7 @@
 scripts/sweep_results/*.csv
 scripts/sweep_results/*.md
 
+
+# Python caches (from docs/experiment helper scripts)
+__pycache__/
+*.pyc

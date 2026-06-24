@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen-14b-server
+  namespace: inferno-workload
+  labels:
+    inferno.server.managed: "true"
+    inferno.server.name: vllm-qwen-14b
+    inferno.server.model: qwen_2_5_14b
+    inferno.server.class: Bronze
+    inferno.server.evaluator: vllm-server
+    inferno.server.allocation.accelerator: H100
+    inferno.server.allocation.maxbatchsize: "256"
+    inferno.server.allocation.maxqueuesize: "64"
+    inferno.server.vllm-deployment: vllm-qwen-14b-gpu
+    inferno.server.vllm-namespace: inferno-workload
+    inferno.server.load.rpm: "250"
+    inferno.server.load.intokens: "1024"
+    inferno.server.load.outtokens: "512"
+    inferno.server.load.nominal.rpm: "250"
+    inferno.server.load.nominal.intokens: "1024"
+    inferno.server.load.nominal.outtokens: "512"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-qwen-14b-server
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen-14b-server
+        inferno.server.pair-id: bench-qwen
+        inferno.server.vllm-deployment: vllm-qwen-14b-gpu
+        inferno.server.model: qwen_2_5_14b
+        inferno.server.allocation.accelerator: H100
+        inferno.server.allocation.maxbatchsize: "256"
+    spec:
+      serviceAccountName: vllm-server-evaluator
+      containers:
+        - name: server-sim
+          image: quay.io/atantawi/inferno-server-sim:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: EVALUATOR_URL
+              value: http://localhost:8081
+            - name: NOISE_ENABLED
+              value: "false"
+            - name: SERVERSIM_CONTINUOUS
+              value: "false"
+            - name: SERVERSIM_SATURATION_POLICY
+              value: "pass-through"
+          volumeMounts:
+            - name: podinfo
+              mountPath: /etc/podinfo
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+        - name: evaluator
+          image: quay.io/atantawi/inferno-evaluator:latest
+          imagePullPolicy: Always
+          # continuous-vllm-server: persistent arrival loop + trailing-window
+          # aggregation (server-sim PR #24). The inferno.server.evaluator label
+          # stays "vllm-server" so the Actuator pairing reconciler still fires;
+          # only the binary (this arg) changes. Reads trailingWindowSec from the
+          # eval ConfigMap; ignores minWindowSec/maxWindowSec/targetSamples.
+          args: ["continuous-vllm-server"]
+          ports:
+            - containerPort: 8081
+          env:
+            - name: EVALUATOR_PORT
+              value: "8081"
+            - name: VLLM_EVAL_CONFIG_FILE
+              value: /app/config/vllm-eval-config.json
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef: { fieldPath: metadata.namespace }
+            - name: VLLM_NAMESPACE
+              value: inferno-workload
+          volumeMounts:
+            - name: vllm-server-config
+              mountPath: /app/config
+            - name: podinfo
+              mountPath: /etc/podinfo
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 200m
+            limits:
+              memory: 512Mi
+              cpu: 1000m
+      volumes:
+        - name: vllm-server-config
+          configMap:
+            name: vllm-server-eval-config
+        - name: podinfo
+          downwardAPI:
+            items:
+              - path: pair-id
+                fieldRef:
+                  fieldPath: "metadata.labels['inferno.server.pair-id']"
+              - path: vllm-deployment
+                fieldRef:
+                  fieldPath: "metadata.labels['inferno.server.vllm-deployment']"
+              - path: labels
+                fieldRef:
+                  fieldPath: metadata.labels

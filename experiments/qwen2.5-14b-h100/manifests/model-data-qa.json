@@ -1,0 +1,26 @@
+{
+  "models": [
+    {
+      "name": "qwen_2_5_14b",
+      "acc": "H100",
+      "accCount": 1,
+      "maxBatchSize": 128,
+      "perfParms": {
+        "alpha": 10.645377,
+        "beta": 0.041760195,
+        "gamma": 0.000057705090
+      }
+    },
+    {
+      "name": "llama_3_1_8b",
+      "acc": "H100",
+      "accCount": 1,
+      "maxBatchSize": 128,
+      "perfParms": {
+        "alpha": 6.49,
+        "beta": 0.0219,
+        "gamma": 0.0000496
+      }
+    }
+  ]
+}
