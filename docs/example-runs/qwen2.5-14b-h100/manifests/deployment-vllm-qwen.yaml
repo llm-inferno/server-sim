@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen-14b-gpu
+  namespace: inferno-workload
+  labels:
+    app: vllm-qwen-14b-gpu
+    inferno.vllm.model: qwen
+    inferno.vllm.accelerator: H100
+spec:
+  progressDeadlineSeconds: 900
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: vllm-qwen-14b-gpu
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+      labels:
+        app: vllm-qwen-14b-gpu
+        inferno.vllm.model: qwen
+        inferno.vllm.accelerator: H100
+        inferno.server.pair-id: bench-qwen
+    spec:
+      affinity:
+        # Node exclusion list inherited from the existing infer/ deployment on
+        # this shared cluster. The 8 b93r43*/b93r44* nodes are reserved for another
+        # team's workload — do not remove without checking with the cluster
+        # owners. Pods schedule on any other GPU node.
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - pokprod-b93r43s0
+                      - pokprod-b93r43s1
+                      - pokprod-b93r43s2
+                      - pokprod-b93r43s3
+                      - pokprod-b93r44s0
+                      - pokprod-b93r44s1
+                      - pokprod-b93r44s2
+                      - pokprod-b93r44s3
+                      # run17: b93r39s1 has a lost GPU (UnexpectedAdmissionError
+                      # "GPU is lost") that churned scale-out pods into litter.
+                      # Exclude until the node's GPU is repaired.
+                      - pokprod-b93r39s1
+      tolerations:
+        - effect: NoSchedule
+          key: nvidia.com/gpu
+          operator: Exists
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: server
+          image: vllm/vllm-openai:v0.21.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              vllm serve Qwen/Qwen2.5-14B-Instruct
+              --served-model-name qwen
+              --trust-remote-code
+              --download-dir /models-cache
+              --no-enable-prefix-caching
+              --dtype bfloat16
+              --max-model-len 4096
+              --max-num-seqs 256
+              --gpu-memory-utilization 0.90
+              --port 8000
+              --generation-config vllm
+          env:
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: token
+                  name: hf-token-secret
+            - name: HOME
+              value: /models-cache
+            - name: VLLM_PORT
+              value: "8000"
+            - name: TORCHINDUCTOR_CACHE_DIR
+              value: /models-cache/.cache/torchinductor
+            - name: XDG_CACHE_HOME
+              value: /models-cache/.cache
+            - name: TORCH_HOME
+              value: /models-cache/.torch
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "6"
+              memory: 48Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "8"
+              memory: 64Gi
+              nvidia.com/gpu: "1"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 30
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 3
+            periodSeconds: 100
+            timeoutSeconds: 8
+          volumeMounts:
+            - name: models-cache
+              mountPath: /models-cache
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: models-cache
+          persistentVolumeClaim:
+            claimName: vllm-models-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

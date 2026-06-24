@@ -1,0 +1,5 @@
+(APIServer pid=44) INFO 06-24 15:25:29 [utils.py:240] non-default args: {'model_tag': 'Qwen/Qwen2.5-14B-Instruct', 'model': 'Qwen/Qwen2.5-14B-Instruct', 'trust_remote_code': True, 'dtype': 'bfloat16', 'max_model_len': 4096, 'served_model_name': ['qwen'], 'generation_config': 'vllm', 'download_dir': '/models-cache', 'gpu_memory_utilization': 0.9, 'enable_prefix_caching': False, 'max_num_seqs': 256}
+(EngineCore pid=245) INFO 06-24 15:26:28 [gpu_worker.py:462] Available KV cache memory: 41.43 GiB
+(EngineCore pid=245) INFO 06-24 15:26:28 [kv_cache_utils.py:1710] GPU KV cache size: 226,240 tokens
+(EngineCore pid=245) INFO 06-24 15:26:28 [kv_cache_utils.py:1711] Maximum concurrency for 4,096 tokens per request: 55.23x
+(EngineCore pid=245) INFO 06-24 15:26:32 [core.py:299] init engine (profile, create kv cache, warmup model) took 29.98 s (compilation: 17.63 s)
