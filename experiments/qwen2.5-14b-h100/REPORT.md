@@ -26,7 +26,7 @@ Headline results:
 
 ![Three-way comparison](results/comparison.png)
 
-*Throughput vs offered load (left), ITL vs throughput (centre), TTFT vs throughput (right). Real = solid, BLIS = dashed, queue-analysis = dotted.*
+*Four panels, left to right: throughput vs offered load, ITL vs throughput, TTFT vs throughput (log y), and avg concurrency vs throughput (Little's law `L = X·W`, using the served throughput). Real = solid, BLIS = dashed, queue-analysis = dotted.*
 
 ---
 
@@ -156,6 +156,14 @@ calibration: queue-analysis's α/β/γ were fit to this server, whereas the BLIS
 used **generic** queueing coefficients. Neither reproduces the magnitude of the real
 TTFT blow-up past saturation (real → 8–11 s) because both are stable-state models;
 the real loss system's queue dynamics dominate there.
+
+**Concurrency.** Computed by Little's law `L = X·W` with the **served** throughput
+`X` (not the offered rate — in a loss system they diverge past the knee). Real and
+queue-analysis both climb toward the 256 running-batch cap near saturation (max ~252),
+while BLIS tops out at ~173. This is the same gap seen in latency, viewed through
+Little's law: because BLIS under-models response time `W`, its inferred in-flight
+count `L` is correspondingly lower at the same throughput. Concurrency approaching the
+cap is the in-flight-count view of the throughput plateau.
 
 **Interpretation.** The headline is not "analytic beats DES" — it is **"a model
 calibrated to the target tracks the target best."** Queue-analysis won on TTFT purely

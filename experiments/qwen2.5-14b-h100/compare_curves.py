@@ -73,7 +73,7 @@ def main():
         return
 
     styles = ["o-", "s--", "^:", "d-."]
-    fig, ax = plt.subplots(1, 3, figsize=(16, 4.5))
+    fig, ax = plt.subplots(1, 4, figsize=(21, 4.5))
     for idx, (label, data) in enumerate(series):
         st = styles[idx % len(styles)]
         rps = [r["rps"] for r in data]
@@ -81,6 +81,10 @@ def main():
         ax[0].plot(rps, tput, st, label=label)
         ax[1].plot(tput, [r["avgITL"] for r in data], st, label=label)
         ax[2].plot(tput, [r["avgTTFT"] for r in data], st, label=label)
+        # Little's law L = X·W: multiplier is the actual throughput X (served rate),
+        # not the offered rate. benchmark_curve.py computes the `concurrency` column
+        # as throughput × avgRespTime, so we just plot it here.
+        ax[3].plot(tput, [r["concurrency"] for r in data], st, label=label)
     ref_rps = [r["rps"] for r in series[0][1]]
     ax[0].plot(ref_rps, ref_rps, ":", color="gray", label="offered=served")
     ax[0].set(xlabel="offered RPS", ylabel="throughput (req/s)", title="Throughput vs offered")
@@ -88,6 +92,8 @@ def main():
     # TTFT spans ~40 ms (low load) to ~10 s (saturation); log y keeps both ends readable.
     ax[2].set(xlabel="throughput (req/s)", ylabel="TTFT (ms, log scale)", title="TTFT vs throughput")
     ax[2].set_yscale("log")
+    ax[3].set(xlabel="throughput (req/s)", ylabel="avg concurrency (L = X·W)",
+              title="Concurrency vs throughput")
     for a in ax:
         a.legend(); a.grid(True, alpha=0.3, which="both")
     fig.suptitle(args.title)
