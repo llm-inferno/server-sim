@@ -63,7 +63,7 @@ All backends implement the same `POST /solve` REST contract (`ProblemData` → `
 |-----------|----------|
 | `dummy-evaluator/` | Hardcoded metrics scaled by RPS — no config needed |
 | `queue-analysis-evaluator/` | Analytical state-dependent Markovian model via `llm-inferno/queue-analysis`; loads Alpha/Beta/Gamma from `model-data.json` keyed by `acc`+`name` |
-| `blis-evaluator/` | Discrete-event simulation via `inference-sim/BLIS`; loads KV/batch/hardware params from `blis-config.json`; latency backend controlled by `LATENCY_BACKEND` (default: `roofline`; also: `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics`) |
+| `blis-evaluator/` | Discrete-event simulation via `inference-sim/BLIS`; loads KV/batch/hardware params from `blis-config.json`; latency backend controlled by `LATENCY_BACKEND` (default: `roofline`; also: `blackbox`, `crossmodel`, `trained-roofline`, `trained-physics`). To onboard a new (model, GPU) pair see `docs/blis-evaluator-config.md` |
 | `vllm-server-evaluator/` | Drives a real paired vLLM server (open-loop Poisson + streaming TTFT/ITL); pairing established by control-loop Actuator via labels |
 | `continuous-vllm-server-evaluator/` | Variant of `vllm-server`: a **persistent** arrival loop (never stops); `/solve` reconfigures live load/concurrency (resizable limiter) and reports a **trailing window** (`trailingWindowSec`). Drop-in `/solve` contract; shares pairing/RBAC/config/aggregation/saturation with `vllm-server` for windowed-vs-continuous A/B. Self-contained copy of the shared primitives (baseline left untouched). |
 
