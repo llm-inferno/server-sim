@@ -274,7 +274,7 @@ BLIS_CONFIG_FILE=blis-config.json \
 # Listening on :8081
 ```
 
-The `blis-config.json` maps accelerator+model pairs to BLIS simulation parameters. A sample config with 10 entries is included (H100 and A100 for `ibm-granite/granite-3.1-8b-instruct`, `ibm-granite/granite-34b-code-instruct-8k`, `meta-llama/Llama-2-13b-hf`, `meta-llama/Llama-2-70b-hf`, and `mistralai/Mixtral-8x7B-v0.1`). The corresponding HuggingFace `config.json` files are included in `hf-configs/`.
+The `blis-config.json` maps accelerator+model pairs to BLIS simulation parameters. A sample config with 11 entries is included (H100 and A100 for `ibm-granite/granite-3.1-8b-instruct`, `ibm-granite/granite-34b-code-instruct-8k`, `meta-llama/Llama-2-13b-hf`, `meta-llama/Llama-2-70b-hf`, and `mistralai/Mixtral-8x7B-v0.1`, plus `Qwen/Qwen2.5-14B-Instruct` on H100). The corresponding HuggingFace `config.json` files are included in `hf-configs/`. To onboard a new (model, GPU) pair end to end — including where `totalKVBlocks` comes from and how to add a GPU not yet in `hardware_config.json` — see [docs/blis-evaluator-config.md](docs/blis-evaluator-config.md).
 
 **Step 2 — start server-sim** (terminal 2):
 
@@ -342,7 +342,7 @@ Each entry in the `models` array configures one `accelerator + model` pair:
 
 ### Obtaining HuggingFace model configs
 
-HuggingFace `config.json` files for the bundled models are already checked in under `blis-evaluator/hf-configs/`. To add a new model, place its `config.json` in `blis-evaluator/hf-configs/<org>/<model-name>/` and add a corresponding entry to `blis-config.json`.
+HuggingFace `config.json` files for the bundled models are already checked in under `blis-evaluator/hf-configs/`. To add a new model, place its `config.json` in `blis-evaluator/hf-configs/<org>/<model-name>/` and add a corresponding entry to `blis-config.json`. See [docs/blis-evaluator-config.md](docs/blis-evaluator-config.md) for a full worked walkthrough (the three config files, the `accelerator` vs `gpu` distinction, and sourcing `totalKVBlocks`).
 
 For public models (no auth required):
 

@@ -27,7 +27,7 @@ type modelEntry struct {
 	Scheduler          string    `json:"scheduler"`          // "fcfs" (default), "sjf", "priority-fcfs"
 	BetaCoeffs         []float64 `json:"betaCoeffs"`         // step-time regression coefficients (blackbox: ≥3, crossmodel: ≥4, trained-roofline: ≥7, trained-physics: ≥7)
 	AlphaCoeffs        []float64 `json:"alphaCoeffs"`        // queueing time regression coefficients [α₀, α₁, α₂] (µs)
-	SimulationHorizon  int64     `json:"simulationHorizon"`  // sim duration in microseconds (default 60s)
+	SimulationHorizon  int64     `json:"simulationHorizon"`  // sim duration in microseconds (default 300s)
 	NumRequests        int64     `json:"numRequests"`        // max requests to simulate (0 = use horizon only)
 	Seed               int64     `json:"seed"`               // RNG seed for deterministic results
 }
