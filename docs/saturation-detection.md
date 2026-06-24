@@ -59,15 +59,34 @@ degraded-state analytical values; `MaxRPS` is set to `MaxRate`.
 
 ### blis
 
-Two independent analytical checks run **before** the DES to avoid expensive simulations on
-overloaded configurations:
+A single **batch-aware** analytical check runs **before** the DES to avoid expensive
+simulations on overloaded configurations. A real vLLM server decodes a whole running batch
+per forward pass — streaming the model weights once and reading the KV of every in-flight
+context — so the running batch `B` is bounded by KV capacity:
 
-1. **Bandwidth (Bottleneck A):** `RPS × AvgOutputTokens > decodeCapacityTPS × saturationMargin`
-   → `"bandwidth"`, `MaxRPS` derived from the bandwidth ceiling.
-2. **KV cache (Bottleneck B):** `MaxRunningReqs × avgSeqLen > TotalKVBlocks × BlockSize × saturationMargin`
-   → `"kv_capacity"`.
+```
+avgContext = L_in + L_out/2
+B          = min(maxRunningReqs, TotalKVSlots / avgContext)
+```
 
-If neither pre-check fires and the DES runs, a post-sim check inspects the output for
+The decode token-throughput ceiling at that batch is then:
+
+```
+t_step    = (weightBytes + B × avgContext × kvBytesPerToken) / (BW × TP)
+decodeTPS = B / t_step
+```
+
+1. **Decode bandwidth:** `RPS × AvgOutputTokens > decodeTPS × saturationMargin`
+   → `"bandwidth"`, `MaxRPS = decodeTPS / AvgOutputTokens`.
+2. **KV cache (degenerate):** a single average request's context does not fit at all
+   (`B_kv < 1`, i.e. `avgContext > TotalKVSlots`) → `"kv_capacity"`, `MaxRPS = 0`.
+
+The earlier form compared aggregate demand against a batch-size-1 weight-streaming rate and
+used a worst-case `maxConcurrency × tokens` KV occupancy; both ignored batching and were far
+too conservative for batched serving (e.g. they vetoed Qwen2.5-14B/H100 at ~0.22 rps versus a
+real ~7 rps ceiling). See `docs/blis-overload-detection.md` for the derivation.
+
+If the pre-check does not fire and the DES runs, a post-sim check inspects the output for
 `StillQueued > 0`, `KVAllocationFailures > 0`, or `TimedOutRequests > 0` — any of these sets
 `"overloaded"` while leaving the DES-computed metrics in place.
 

@@ -42,7 +42,16 @@ T_step_decode = (weight_bytes/TP
 max_decode_tput_tokens_per_sec = BatchSize / T_step_decode
 ```
 
-**Overload condition:** `λ × L_out > decode_capacity_tokens_per_sec`
+**Overload condition:** `λ × L_out > max_decode_tput_tokens_per_sec`
+
+> **Implementation note (server-sim `blis-evaluator`).** `checkSaturation` in
+> `blis-evaluator/handler.go` uses the **batch-aware** `T_step_decode` form above —
+> *not* the batch-size-1 `decode_capacity_tokens_per_sec` weight-only rate. The
+> batch is KV-limited: `BatchSize = min(maxRunningReqs, TotalKVSlots / avgContext)`
+> with `avgContext = L_in + L_out/2`. The batch-1 weight-only rate (the first
+> formula) was found to be ~30× too conservative for batched serving — it vetoed
+> Qwen2.5-14B/H100 at ~0.22 rps versus a real ~7 rps ceiling — so it is **not** used
+> as the saturation bound. See `docs/example-runs/qwen2.5-14b-h100/`.
 
 Where:
 - `λ` = request arrival rate (req/s)
@@ -52,23 +61,23 @@ Where:
 
 #### Bottleneck B — KV cache capacity
 
-Total KV slots: `C = NumKVBlocks × BlockSize` tokens. By Little's Law, the average number
-of KV tokens occupied at steady state is:
+Total KV slots: `C = NumKVBlocks × BlockSize` tokens. KV capacity bounds the running
+batch (above): at most `C / avgContext` average-length contexts fit at once, where
+`avgContext = L_in + L_out/2`. In the implemented pre-check this feeds `BatchSize`
+rather than acting as a separate worst-case occupancy test.
+
+A standalone KV saturation is reported only in the **degenerate** case where a single
+average request's context does not fit at all:
 
 ```
-avg_kv_tokens_in_flight = λ × T_e2e × (L_in + L_out / 2)
+if avgContext > C  →  KV-saturated (unservable) at any positive load
 ```
 
-Where `L_in` = mean input tokens per request and `T_e2e` = mean end-to-end latency.
-
-**Overload condition:** `avg_kv_tokens_in_flight > C`
-
-Because T_e2e depends on load (circular), use the *unloaded* latency as a conservative
-lower bound for a first estimate:
-
-```
-if λ × T_e2e_unloaded × (L_in + L_out / 2) > C  →  KV-saturated at any positive load
-```
+> An earlier implementation used a worst-case `maxConcurrency × (L_in + L_out)`
+> occupancy here, which flagged saturation whenever the configured concurrency cap
+> was high (e.g. 256) even at trivial load. Real engines dynamically cap the running
+> batch at what KV allows and queue the rest, so that bound produced false positives;
+> it was replaced by the batch-limiting form above.
 
 ### Where to find the parameters
 
@@ -136,8 +145,8 @@ breakdowns are in `sim/cluster/metrics.go:88–120`.
 
 | Goal | Approach | Key formula / field |
 |---|---|---|
-| Check overload before running | Bandwidth check | `λ × L_out > BW × TP / (Params × BytesPerParam)` |
-| Check overload before running | KV capacity check | `λ × T_e2e × (L_in + L_out/2) > NumKVBlocks × BlockSize` |
+| Check overload before running | Batch-aware decode bandwidth | `λ × L_out > BatchSize / T_step_decode`, `BatchSize = min(maxRunningReqs, KVSlots/avgContext)` |
+| Check overload before running | KV capacity (degenerate) | `avgContext > NumKVBlocks × BlockSize` (single request unservable) |
 | Check overload after running | Queue buildup | `still_queued > 0` |
 | Check overload after running | KV saturation | `kv_allocation_failures > 0` |
 | Locate saturation point | Rate sweep | plot `still_queued / injected_requests` vs λ |

@@ -48,11 +48,13 @@ func tinyMoEModel() blisSim.ModelConfig {
 // loHWConfig returns a HardwareCalib with very low bandwidth so that bandwidth
 // saturation is easy to trigger in tests without needing realistic RPS values.
 //
-// With BwPeakTBs=1e-9 and tinyDenseModel (472 bytes):
+// With BwPeakTBs=1e-9 (bwBytesPerSec = 1e3), tinyDenseModel (weightBytes=472,
+// kvBytesPerToken=16) and a batch of 1 at in=10/out=1 (avgContext=10.5):
 //
-//	decodeCapacityTPS = 1e-9 * 1e12 / 472 ≈ 2.118 tokens/sec
+//	t_step    = (472 + 1*10.5*16) / 1e3 = 0.64 s
+//	decodeTPS = 1 / 0.64 ≈ 1.5625 tokens/sec
 //
-// maxRPS_bandwidth = decodeCapacityTPS / AvgOutputTokens
+// maxRPS_bandwidth = decodeTPS / AvgOutputTokens
 func loHWConfig() blisSim.HardwareCalib {
 	return blisSim.HardwareCalib{BwPeakTBs: 1e-9}
 }
@@ -189,16 +191,35 @@ func TestCheckSaturation_HigherTPReducesBandwidthPressure(t *testing.T) {
 
 func TestCheckSaturation_KVSaturated(t *testing.T) {
 	mc := tinyDenseModel()
-	// totalKVSlots = 10 * 16 = 160; concurrentTokens = 10 * 20 = 200 > 160*0.98=156.8
-	pd := evaluator.ProblemData{RPS: 0.001, AvgInputTokens: 10, AvgOutputTokens: 10}
+	// Degenerate KV saturation: a single average request's context does not fit.
+	// totalKVSlots = 1*16 = 16; avgContext = 20 + 10/2 = 25 > 16 → B_kv < 1.
+	pd := evaluator.ProblemData{RPS: 0.001, AvgInputTokens: 20, AvgOutputTokens: 10}
 	entry := modelEntry{
-		TP: 1, TotalKVBlocks: 10, BlockSizeTokens: 16, MaxRunningReqs: 10,
+		TP: 1, TotalKVBlocks: 1, BlockSizeTokens: 16, MaxRunningReqs: 10,
 	}
 
 	sat, _ := checkSaturation(pd, &mc, hiHWConfig(), entry)
 
 	if sat != evaluator.SaturationKV {
 		t.Errorf("saturation = %q, want %q", sat, evaluator.SaturationKV)
+	}
+}
+
+func TestCheckSaturation_HighMaxConcurrencyDoesNotFalselySaturate(t *testing.T) {
+	// Regression: the earlier worst-case maxConcurrency*tokens KV bound flagged
+	// saturation whenever the configured concurrency cap was high, even at
+	// trivial load. The batch-aware model only lets KV *limit the batch*; with a
+	// fast interconnect and tiny load it must not report saturation.
+	mc := tinyDenseModel()
+	// totalKVSlots = 100*16 = 1600; avgContext = 10 + 10/2 = 15; B_kv ≈ 106.
+	// batch = min(1000, 106) = 106, well above 1 → no degenerate KV saturation.
+	pd := evaluator.ProblemData{RPS: 0.001, AvgInputTokens: 10, AvgOutputTokens: 10, MaxConcurrency: 1000}
+	entry := modelEntry{TP: 1, TotalKVBlocks: 100, BlockSizeTokens: 16, MaxRunningReqs: 256}
+
+	sat, _ := checkSaturation(pd, &mc, hiHWConfig(), entry)
+
+	if sat != evaluator.SaturationNone {
+		t.Errorf("high maxConcurrency at trivial load should not saturate, got %q", sat)
 	}
 }
 
@@ -238,17 +259,22 @@ func TestCheckSaturation_MaxConcurrencyOverridesMaxRunningReqs(t *testing.T) {
 // checkSaturation — tolerance margin boundary
 // ---------------------------------------------------------------------------
 
+// decodeTPSAtBatch1 mirrors the production batch-aware decode ceiling at batch=1
+// (MaxRunningReqs=1), so the margin-boundary tests track the real formula rather
+// than a hardcoded constant.
+func decodeTPSAtBatch1(mc *blisSim.ModelConfig, hc blisSim.HardwareCalib, inTok, outTok float64) float64 {
+	avgContext := inTok + outTok/2.0
+	tStep := (estimateWeightBytes(mc) + 1.0*avgContext*estimateKVBytesPerToken(mc)) / (hc.BwPeakTBs * 1e12)
+	return 1.0 / tStep
+}
+
 func TestCheckSaturation_ExactlyAtCapacityIsNotSaturated(t *testing.T) {
 	mc := tinyDenseModel()
-	// decodeCapacityTPS ≈ 2.118; demand = RPS*AvgOut
-	// Set demand exactly at capacity (not * 0.98) — should NOT be flagged.
 	hc := loHWConfig()
-	wBytes := estimateWeightBytes(&mc)
-	decodeCapTPS := hc.BwPeakTBs * 1e12 / wBytes // ≈ 2.118 with TP=1
+	// demand at 97% of the batch-1 decode ceiling stays below the 0.98 margin.
+	decodeTPS := decodeTPSAtBatch1(&mc, hc, 10, 1) // ≈1.5625 tok/s
 
-	// demand = decodeCapTPS * 1.0; with margin we need demand > decodeCapTPS * 0.98
-	// so demand = decodeCapTPS * 0.97 is safely below the threshold
-	rps := float32(decodeCapTPS * 0.97)
+	rps := float32(decodeTPS * 0.97)
 	pd := evaluator.ProblemData{RPS: rps, AvgInputTokens: 10, AvgOutputTokens: 1}
 	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
 
@@ -262,11 +288,10 @@ func TestCheckSaturation_ExactlyAtCapacityIsNotSaturated(t *testing.T) {
 func TestCheckSaturation_JustAboveMarginIsSaturated(t *testing.T) {
 	mc := tinyDenseModel()
 	hc := loHWConfig()
-	wBytes := estimateWeightBytes(&mc)
-	decodeCapTPS := hc.BwPeakTBs * 1e12 / wBytes
+	decodeTPS := decodeTPSAtBatch1(&mc, hc, 10, 1)
 
-	// demand = decodeCapTPS * 0.99 > decodeCapTPS * 0.98 → should be saturated
-	rps := float32(decodeCapTPS * 0.99)
+	// demand at 99% of capacity > 0.98 margin → should be saturated
+	rps := float32(decodeTPS * 0.99)
 	pd := evaluator.ProblemData{RPS: rps, AvgInputTokens: 10, AvgOutputTokens: 1}
 	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
 
