@@ -163,46 +163,85 @@ func effectiveMaxRunningReqs(pd evaluator.ProblemData, entry modelEntry) int64 {
 // and a derived MaxRPS if the offered workload exceeds server capacity, or
 // ("", 0) if the workload appears sustainable.
 //
-// Two independent bottlenecks are checked:
+// The model is batch-aware: a real vLLM server decodes a whole running batch per
+// forward pass, streaming the model weights once and reading the KV cache of every
+// in-flight context. The running batch B is bounded by KV capacity:
 //
-//  1. Decode memory bandwidth: each decode step must stream model weights once.
-//     The bandwidth ceiling on decode throughput is:
-//     decodeCapacityTPS = (BwPeakTBs × TP × 1e12) / totalWeightBytes
-//     Saturated if RPS × AvgOutputTokens > decodeCapacityTPS × saturationMargin.
+//	avgContext = L_in + L_out/2                 (mean KV tokens per in-flight request)
+//	B_kv       = TotalKVSlots / avgContext      (avg-length contexts that fit)
+//	B          = min(maxRunningReqs, B_kv)
 //
-//  2. KV cache capacity: the KV slots must fit all in-flight token contexts.
-//     Saturated if MaxRunningReqs × avgSeqLen > TotalKVBlocks × BlockSize × saturationMargin.
+// Per decode step the engine streams weights once plus the KV of all B contexts and
+// emits B new tokens, so the decode token-throughput ceiling is:
 //
-// See docs/saturation-detection.md and docs/blis-overload-detection.md for details.
+//	t_step    = (weightBytes + B*avgContext*kvBytesPerToken) / (BW*TP)
+//	decodeTPS = B / t_step
+//
+// Saturated (bandwidth) if RPS*L_out > decodeTPS*saturationMargin, with
+// MaxRPS = decodeTPS/L_out. A degenerate KV saturation is reported when a single
+// average request's context does not fit in KV at all (B_kv < 1).
+//
+// This batch-aware form replaces an earlier bound that compared aggregate demand
+// against the batch-size-1 weight-streaming rate (ignoring batching) and used a
+// worst-case maxConcurrency*tokens KV occupancy; both were far too conservative
+// for batched serving (e.g. they vetoed Qwen2.5-14B/H100 at ~0.22 RPS). See
+// docs/saturation-detection.md and docs/blis-overload-detection.md.
 func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisSim.HardwareCalib, entry modelEntry) (saturation string, maxRPS float32) {
 	tp := entry.TP
 	if tp <= 0 {
 		tp = 1
 	}
 
-	// --- Bottleneck A: decode memory bandwidth ---
-	weightBytes := estimateWeightBytes(mc)
-	if weightBytes > 0 && hc.BwPeakTBs > 0 {
-		decodeCapacityTPS := (hc.BwPeakTBs * float64(tp) * 1e12) / weightBytes
-		demandTPS := float64(pd.RPS) * float64(pd.AvgOutputTokens)
-		if demandTPS > decodeCapacityTPS*saturationMargin {
-			derivedMaxRPS := float32(decodeCapacityTPS / float64(pd.AvgOutputTokens))
-			return evaluator.SaturationBandwidth, derivedMaxRPS
+	outTokens := float64(pd.AvgOutputTokens)
+	avgContext := float64(pd.AvgInputTokens) + outTokens/2.0
+	totalKVSlots := float64(entry.TotalKVBlocks * entry.BlockSizeTokens)
+	batch := float64(effectiveMaxRunningReqs(pd, entry))
+
+	// KV capacity limits the running batch. If a single average request's context
+	// does not fit, the workload is unservable (degenerate KV saturation).
+	if totalKVSlots > 0 && avgContext > 0 {
+		bKV := totalKVSlots / avgContext
+		if bKV < 1.0 {
+			return evaluator.SaturationKV, 0
+		}
+		if bKV < batch {
+			batch = bKV
 		}
 	}
 
-	// --- Bottleneck B: KV cache capacity ---
-	totalKVSlots := entry.TotalKVBlocks * entry.BlockSizeTokens
-	maxRunningReqs := effectiveMaxRunningReqs(pd, entry)
-	avgTokensPerReq := float64(pd.AvgInputTokens) + float64(pd.AvgOutputTokens)
-	if totalKVSlots > 0 && avgTokensPerReq > 0 && maxRunningReqs > 0 {
-		concurrentKVTokens := float64(maxRunningReqs) * avgTokensPerReq
-		if concurrentKVTokens > float64(totalKVSlots)*saturationMargin {
-			return evaluator.SaturationKV, 0
+	// Decode memory-bandwidth ceiling at the (KV-limited) running batch.
+	weightBytes := estimateWeightBytes(mc)
+	kvBytesPerToken := estimateKVBytesPerToken(mc)
+	bwBytesPerSec := hc.BwPeakTBs * float64(tp) * 1e12
+	if outTokens > 0 && weightBytes > 0 && bwBytesPerSec > 0 && batch > 0 {
+		tStep := (weightBytes + batch*avgContext*kvBytesPerToken) / bwBytesPerSec
+		if tStep > 0 {
+			decodeTPS := batch / tStep
+			demandTPS := float64(pd.RPS) * outTokens
+			if demandTPS > decodeTPS*saturationMargin {
+				return evaluator.SaturationBandwidth, float32(decodeTPS / outTokens)
+			}
 		}
 	}
 
 	return evaluator.SaturationNone, 0
+}
+
+// estimateKVBytesPerToken returns the per-token KV cache size in bytes — keys and
+// values across all layers — using the same dtype assumption as the weight
+// estimate. For grouped-query attention this uses the KV head count, not the
+// (larger) attention head count.
+func estimateKVBytesPerToken(mc *blisSim.ModelConfig) float64 {
+	numKVHeads := mc.NumKVHeads
+	if numKVHeads == 0 {
+		numKVHeads = mc.NumHeads
+	}
+	var headDim int64
+	if mc.NumHeads > 0 {
+		headDim = int64(mc.HiddenDim) / int64(mc.NumHeads)
+	}
+	// 2 = K and V tensors.
+	return 2.0 * float64(int64(numKVHeads)) * float64(headDim) * float64(int64(mc.NumLayers)) * mc.EffectiveWeightBytesPerParam()
 }
 
 // estimateWeightBytes returns a conservative estimate of total model weight
