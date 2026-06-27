@@ -105,3 +105,30 @@ func TestRunReturnsWhenContextCancelled(t *testing.T) {
 		t.Fatal("Run did not return after context cancellation")
 	}
 }
+
+func TestSolveCurrentSubstitutesOfferedRPS(t *testing.T) {
+	pd := evaluator.ProblemData{RPS: 5, MaxConcurrency: 32}
+	cli := okSolver{ad: evaluator.AnalysisData{OfferedRPS: 9, Throughput: 4}}
+	eff, ad, err := solveCurrent(context.Background(), cli, config.SaturationPolicyPassThrough, pd)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if eff.RPS != 9 {
+		t.Fatalf("eff.RPS = %v, want 9 (OfferedRPS substitution)", eff.RPS)
+	}
+	if ad.Throughput != 4 {
+		t.Fatalf("ad.Throughput = %v, want 4", ad.Throughput)
+	}
+}
+
+func TestSolveCurrentKeepsRPSWhenNoOffered(t *testing.T) {
+	pd := evaluator.ProblemData{RPS: 5, MaxConcurrency: 32}
+	cli := okSolver{ad: evaluator.AnalysisData{Throughput: 4}} // OfferedRPS = 0
+	eff, _, err := solveCurrent(context.Background(), cli, config.SaturationPolicyPassThrough, pd)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if eff.RPS != 5 {
+		t.Fatalf("eff.RPS = %v, want 5 (unchanged)", eff.RPS)
+	}
+}
