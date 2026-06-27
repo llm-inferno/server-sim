@@ -211,13 +211,14 @@ func TestServer_UnsaturatedResult_SaturationFieldAbsentFromJSON(t *testing.T) {
 func TestLatestColdStart404(t *testing.T) {
 	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5})
 	defer eval.Close()
-	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute})
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute, ContinuousMode: true, TickInterval: time.Minute})
+	defer s.Shutdown()
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
 	resp, _ := http.Get(srv.URL + "/latest")
 	if resp.StatusCode != http.StatusNotFound {
-		t.Fatalf("cold-start /latest = %d, want 404", resp.StatusCode)
+		t.Fatalf("continuous cold-start /latest = %d, want 404", resp.StatusCode)
 	}
 }
 
@@ -232,11 +233,11 @@ func TestShutdownIsSafeWithoutContinuousMode(t *testing.T) {
 func TestLatestReturnsEnvelope(t *testing.T) {
 	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5, Throughput: 3})
 	defer eval.Close()
-	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute})
-	// Drive one job synchronously via the existing POST path.
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute, ContinuousMode: true, TickInterval: time.Minute})
+	defer s.Shutdown()
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	id := submitJob(t, srv)
+	id := submitJob(t, srv) // populate the job store via POST /simulate
 	pollJob(t, srv, id)
 
 	resp, err := http.Get(srv.URL + "/latest")
@@ -251,5 +252,70 @@ func TestLatestReturnsEnvelope(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&env)
 	if env.Result.AvgITL != 5 || env.CompletedAt == "" {
 		t.Fatalf("bad envelope: %+v", env)
+	}
+}
+
+func TestLatestOnDemandComputesFromLabels(t *testing.T) {
+	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 7, Throughput: 4})
+	defer eval.Close()
+	dir := t.TempDir()
+	writeLabels(t, dir)                                                                  // sampleLabels: maxbatchsize=32, rpm=300, qwen_2_5_14b/H100
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute, LabelsDir: dir}) // ContinuousMode off
+	defer s.Shutdown()
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/latest")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("on-demand /latest status err=%v code=%d", err, resp.StatusCode)
+	}
+	var env struct {
+		EffectiveInput evaluator.ProblemData  `json:"effectiveInput"`
+		Result         evaluator.AnalysisData `json:"result"`
+		CompletedAt    string                 `json:"completedAt"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Coherence by construction: effectiveInput.concurrency == in-force maxbatchsize.
+	if env.EffectiveInput.MaxConcurrency != 32 {
+		t.Fatalf("effectiveInput.MaxConcurrency = %d, want 32 (in-force maxbatchsize)", env.EffectiveInput.MaxConcurrency)
+	}
+	if env.Result.AvgITL != 7 || env.CompletedAt == "" {
+		t.Fatalf("bad on-demand envelope: %+v", env)
+	}
+}
+
+func TestLatestOnDemandNotReady404(t *testing.T) {
+	eval := mockEvaluator(t, evaluator.AnalysisData{AvgITL: 5})
+	defer eval.Close()
+	dir := t.TempDir() // no labels file written → pod not ready
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute, LabelsDir: dir})
+	defer s.Shutdown()
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	resp, _ := http.Get(srv.URL + "/latest")
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("on-demand /latest with no labels = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestLatestOnDemandSolveError500(t *testing.T) {
+	// Evaluator returns 500 → SolveCtx errors → /latest surfaces 500.
+	eval := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer eval.Close()
+	dir := t.TempDir()
+	writeLabels(t, dir)
+	s := New(config.Config{EvaluatorURL: eval.URL, JobTTL: time.Minute, LabelsDir: dir})
+	defer s.Shutdown()
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+
+	resp, _ := http.Get(srv.URL + "/latest")
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("on-demand /latest with solver error = %d, want 500", resp.StatusCode)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/llm-inferno/server-sim/pkg/config"
@@ -14,20 +15,22 @@ import (
 
 // Server is the server-sim REST API server.
 type Server struct {
-	router  *gin.Engine
-	cfg     config.Config
-	evalCli *evaluator.Client
-	jobs    *job.Manager
-	cancel  context.CancelFunc // cancels the continuous loop; nil when not running
+	router     *gin.Engine
+	cfg        config.Config
+	evalCli    *evaluator.Client
+	jobs       *job.Manager
+	labelsPath string             // downward-API labels file; used by on-demand /latest
+	cancel     context.CancelFunc // cancels the continuous loop; nil when not running
 }
 
 // New creates and configures a new Server.
 func New(cfg config.Config) *Server {
 	s := &Server{
-		router:  gin.Default(),
-		cfg:     cfg,
-		evalCli: evaluator.NewClient(cfg.EvaluatorURL),
-		jobs:    job.NewManager(cfg.JobTTL),
+		router:     gin.Default(),
+		cfg:        cfg,
+		evalCli:    evaluator.NewClient(cfg.EvaluatorURL),
+		jobs:       job.NewManager(cfg.JobTTL),
+		labelsPath: labelsFilePath(cfg),
 	}
 	s.router.POST("/simulate", s.handleSimulate)
 	s.router.GET("/simulate/:id", s.handleGetJob)
@@ -114,16 +117,41 @@ func (s *Server) handleHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// handleLatest returns the most-recent completed job as a self-describing envelope.
+// handleLatest returns the current performance estimate as a self-describing
+// envelope. In continuous mode it serves the most-recent loop-completed window
+// (a lookback). In non-continuous mode it computes a fresh result on demand from
+// the current in-force labels — so effectiveInput.concurrency always equals the
+// in-force maxbatchsize and the collector's coherence gate passes by construction.
 func (s *Server) handleLatest(c *gin.Context) {
-	j := s.jobs.Latest()
-	if j == nil {
+	if s.cfg.ContinuousMode {
+		j := s.jobs.Latest()
+		if j == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no result yet"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"effectiveInput": j.EffectiveInput,
+			"result":         j.Result,
+			"completedAt":    j.CompletedAt,
+		})
+		return
+	}
+
+	// Non-continuous (simulator) backend: compute on demand against the current
+	// labels. Thread the request context so the collector's GET /latest timeout
+	// aborts a too-long solve cleanly rather than orphaning it.
+	eff, ad, ok, err := computeLatest(c.Request.Context(), s.cfg.SaturationPolicy, s.evalCli, s.labelsPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "no result yet"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"effectiveInput": j.EffectiveInput,
-		"result":         j.Result,
-		"completedAt":    j.CompletedAt,
+		"effectiveInput": eff,
+		"result":         ad,
+		"completedAt":    time.Now().UTC(),
 	})
 }
