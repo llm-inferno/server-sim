@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -29,7 +30,18 @@ type modelEntry struct {
 	AlphaCoeffs        []float64 `json:"alphaCoeffs"`        // queueing time regression coefficients [α₀, α₁, α₂] (µs)
 	SimulationHorizon  int64     `json:"simulationHorizon"`  // sim duration in microseconds (default 300s)
 	NumRequests        int64     `json:"numRequests"`        // max requests to simulate (0 = use horizon only)
-	Seed               int64     `json:"seed"`               // RNG seed for deterministic results
+	Seed               int64            `json:"seed"`      // RNG seed for deterministic results
+	TokenDist          *tokenDistConfig `json:"tokenDist"` // optional; nil → constant (fixed-length) default
+}
+
+// tokenDistConfig configures the token-length distribution synthesized for the
+// blis workload. The request supplies the mean (ProblemData carries only means);
+// cov and min come from config; the clamp max is derived from MaxModelLen
+// (sum-split). A nil block means the constant (fixed-length) default.
+type tokenDistConfig struct {
+	Type string  `json:"type"` // "constant" | "exponential" | "gaussian" | "lognormal"
+	Cov  float64 `json:"cov"`  // coefficient of variation (std_dev/mean); gaussian & lognormal only
+	Min  float64 `json:"min"`  // clamp floor; 0 or unset means default 1; negative is rejected
 }
 
 // blisConfig is the top-level structure of blis-config.json.
@@ -94,6 +106,44 @@ func validateEntry(m *modelEntry) error {
 	if m.MaxScheduledTokens <= 0 {
 		return fmt.Errorf("maxScheduledTokens must be > 0")
 	}
+	if m.TokenDist != nil {
+		if err := validateTokenDist(m.TokenDist, m.MaxModelLen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateTokenDist checks the optional token-distribution block. cov/min are
+// ignored (with a warning) for types that don't use them. Exponential cannot be
+// bounded — its sampler ignores min/max — so it is rejected when MaxModelLen > 0.
+func validateTokenDist(td *tokenDistConfig, maxModelLen int64) error {
+	switch td.Type {
+	case "constant", "exponential", "gaussian", "lognormal":
+	default:
+		return fmt.Errorf("tokenDist.type %q must be one of constant, exponential, gaussian, lognormal", td.Type)
+	}
+	if maxModelLen > 0 && td.Type == "exponential" {
+		return fmt.Errorf("tokenDist.type %q cannot be bounded by maxModelLen (%d); use gaussian or lognormal", td.Type, maxModelLen)
+	}
+	if maxModelLen <= 0 && (td.Type == "gaussian" || td.Type == "lognormal") {
+		return fmt.Errorf("tokenDist.type %q requires maxModelLen > 0 (it needs a clamp ceiling); set maxModelLen or use exponential", td.Type)
+	}
+	if (td.Type == "gaussian" || td.Type == "lognormal") && td.Cov <= 0 {
+		return fmt.Errorf("tokenDist.cov must be > 0 for type %q", td.Type)
+	}
+	// min is a token-count floor: 0 means "unset, default to 1"; any explicit
+	// value must be >= 1. Reject the (0, 1) gap, which would truncate to 0 and
+	// silently behave as unset.
+	if td.Min < 0 {
+		return fmt.Errorf("tokenDist.min must be >= 0, got %v", td.Min)
+	}
+	if td.Min > 0 && td.Min < 1 {
+		return fmt.Errorf("tokenDist.min must be 0 (default) or >= 1, got %v", td.Min)
+	}
+	if (td.Type == "constant" || td.Type == "exponential") && (td.Cov != 0 || td.Min != 0) {
+		log.Printf("blis config: tokenDist.cov/min ignored for type %q", td.Type)
+	}
 	return nil
 }
 
@@ -118,5 +168,8 @@ func applyDefaults(m *modelEntry) {
 		// Default: zero queueing overhead (conservative — underestimates TTFT).
 		// Supply calibrated values from defaults.yaml for accurate results.
 		m.AlphaCoeffs = []float64{0, 0, 0}
+	}
+	if m.TokenDist != nil && m.TokenDist.Min <= 0 {
+		m.TokenDist.Min = 1
 	}
 }

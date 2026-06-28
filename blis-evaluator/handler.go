@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"net/http"
 	"os"
 
@@ -90,8 +91,13 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 			return
 		}
 
-		// Build a single-client workload with exponential token length distributions.
-		// Exponential requires only "mean", matching the ProblemData contract.
+		// Build a single-client workload whose token-length distributions are
+		// synthesized by tokenDist from the per-entry tokenDist config (type,
+		// cov, min) and the MaxModelLen sum-split. A nil config defaults to a
+		// constant (fixed-length) distribution.
+		maxModelLen := float64(entry.MaxModelLen)
+		inMean := float64(pd.AvgInputTokens)
+		outMean := float64(pd.AvgOutputTokens)
 		spec := &workload.WorkloadSpec{
 			AggregateRate: float64(pd.RPS),
 			Seed:          entry.Seed,
@@ -100,14 +106,8 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 					ID:           "client-0",
 					RateFraction: 1.0,
 					Arrival:      workload.ArrivalSpec{Process: "poisson"},
-					InputDist: workload.DistSpec{
-						Type:   "exponential",
-						Params: map[string]float64{"mean": float64(pd.AvgInputTokens)},
-					},
-					OutputDist: workload.DistSpec{
-						Type:   "exponential",
-						Params: map[string]float64{"mean": float64(pd.AvgOutputTokens)},
-					},
+					InputDist:    tokenDist(entry.TokenDist, inMean, outMean, maxModelLen),
+					OutputDist:   tokenDist(entry.TokenDist, outMean, inMean, maxModelLen),
 				},
 			},
 		}
@@ -140,6 +140,89 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 
 		c.IndentedJSON(http.StatusOK, ad)
 	}
+}
+
+// tokenDist builds a token-length distribution for one dimension (input or
+// output) from its mean. The request supplies the mean (ProblemData carries
+// only means); cfg supplies the distribution type, coefficient of variation,
+// and clamp floor; and a positive maxModelLen supplies the clamp ceiling via a
+// sum-split against the other dimension's mean — so input + output budgets
+// always sum to <= maxModelLen (blis drops requests whose input+output exceeds
+// it). A nil cfg means the constant (fixed-length) default.
+//
+// Config validation (validateTokenDist) guarantees exponential is never paired
+// with maxModelLen > 0, so its unclampable tail can never breach the bound.
+func tokenDist(cfg *tokenDistConfig, mean, otherMean, maxModelLen float64) workload.DistSpec {
+	if cfg == nil || cfg.Type == "constant" {
+		return workload.DistSpec{
+			Type:   "constant",
+			Params: map[string]float64{"value": math.Round(mean)},
+		}
+	}
+
+	switch cfg.Type {
+	case "exponential":
+		return workload.DistSpec{
+			Type:   "exponential",
+			Params: map[string]float64{"mean": mean},
+		}
+	case "gaussian":
+		max := sumSplitMax(mean, otherMean, maxModelLen)
+		return workload.DistSpec{
+			Type: "gaussian",
+			Params: map[string]float64{
+				"mean":    mean,
+				"std_dev": cfg.Cov * mean,
+				"min":     clampMin(cfg.Min, max),
+				"max":     max,
+			},
+		}
+	case "lognormal":
+		sigma := math.Sqrt(math.Log(1 + cfg.Cov*cfg.Cov))
+		mu := math.Log(mean) - sigma*sigma/2
+		max := sumSplitMax(mean, otherMean, maxModelLen)
+		return workload.DistSpec{
+			Type: "lognormal",
+			Params: map[string]float64{
+				"mu":    mu,
+				"sigma": sigma,
+				"min":   clampMin(cfg.Min, max),
+				"max":   max,
+			},
+		}
+	default:
+		// Unreachable: validateTokenDist rejects unknown types at config load.
+		return workload.DistSpec{
+			Type:   "constant",
+			Params: map[string]float64{"value": math.Round(mean)},
+		}
+	}
+}
+
+// clampMin keeps the configured clamp floor from exceeding this dimension's
+// dynamic ceiling (max). The floor is best-effort against the request-derived
+// sum-split cap, which config validation cannot know: when a skewed mean ratio
+// shrinks this dimension's share below the configured min, we cap min at max so
+// the sampler sees a coherent [min, max] band instead of an inverted one.
+func clampMin(min, max float64) float64 {
+	if min > max {
+		return max
+	}
+	return min
+}
+
+// sumSplitMax returns this dimension's share of maxModelLen, split by the mean
+// ratio against the other dimension, so the input and output clamp ceilings sum
+// to maxModelLen and per-request input + output never exceeds it. Floored at 1.
+func sumSplitMax(mean, otherMean, maxModelLen float64) float64 {
+	share := maxModelLen
+	if mean+otherMean > 0 {
+		share = maxModelLen * mean / (mean + otherMean)
+	}
+	if share < 1 {
+		share = 1
+	}
+	return share
 }
 
 // effectiveMaxRunningReqs returns the running-request cap used for both the
