@@ -238,10 +238,10 @@ flowchart TB
 
     subgraph blis["blis-evaluator"]
         direction TB
-        Config["blis-config.json\n──────────\nacc | model → KV blocks\n  batch limits · GPU · TP\n  scheduler · alphaCoeffs"]
+        Config["blis-config.json\n──────────\nacc | model → KV blocks\n  batch limits · GPU · TP\n  scheduler · alphaCoeffs · tokenDist"]
         HF["HuggingFace config.json\n──────────\nhidden_size · num_layers\nnum_kv_heads · torch_dtype\n…"]
         HW["hardware_config.json\n──────────\nTFlopsPeak · BwPeakTBs\nmfuPrefill · mfuDecode\nMemoryGiB"]
-        Workload["WorkloadSpec\n──────────\nPoisson arrivals @ RPS\nExponential token lengths\n(mean = avgInput/OutputTokens)"]
+        Workload["WorkloadSpec\n──────────\nPoisson arrivals @ RPS\nConfigurable token lengths\n(tokenDist; mean = avgInput/OutputTokens)"]
         Sim["BLIS ClusterSimulator\nDiscrete-Event Simulation\n──────────\nroofline latency model\nprefill + decode scheduling\nKV cache management"]
         Metrics["sim.Metrics\n──────────\nRequestTTFTs · RequestE2Es\nAllITLs · SchedulingDelays\nNumRunningBatchRequests\nSimEndedTime"]
 
@@ -339,6 +339,7 @@ Each entry in the `models` array configures one `accelerator + model` pair:
 | `simulationHorizon` | | Simulated time window in microseconds (default: `300000000` = 300s). Longer horizons reduce cold-start bias in throughput: the DES starts with an empty system, so a short horizon inflates the ramp-up fraction. Per-entry override is the escape valve if a specific model/RPS combination takes too long to simulate. |
 | `numRequests` | | Max requests to simulate, `0` = use horizon only (default: `0`) |
 | `seed` | | RNG seed for deterministic results (default: `42`) |
+| `tokenDist` | | Token-length distribution block (`type`/`cov`/`min`); default `constant` (fixed length). `exponential` is rejected when `maxModelLen > 0`. See [docs/blis-evaluator-config.md](docs/blis-evaluator-config.md#token-length-distribution) |
 
 ### Obtaining HuggingFace model configs
 
