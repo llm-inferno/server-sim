@@ -61,6 +61,41 @@ Validation and defaults live in `blis-evaluator/config.go`.
 | `simulationHorizon` | `300000000` (300 s, µs) | Longer horizon reduces cold-start throughput bias but costs wall-clock time. |
 | `numRequests` | `0` (horizon only) | Cap on requests to simulate. |
 | `seed` | `42` | RNG seed for deterministic runs. |
+| `tokenDist` | `constant` (fixed length) | Token-length distribution. See [Token-length distribution](#token-length-distribution). |
+
+### Token-length distribution
+
+`tokenDist` controls how per-request input/output token counts are sampled. The
+request supplies only the **mean** (`AvgInputTokens`/`AvgOutputTokens`); `cov`
+and `min` come from this block; the clamp ceiling is derived from `maxModelLen`.
+
+```jsonc
+"tokenDist": {
+  "type": "gaussian",   // "constant" | "exponential" | "gaussian" | "lognormal"
+  "cov": 0.5,            // coefficient of variation (std_dev/mean); gaussian & lognormal
+  "min": 1               // clamp floor: 0 (default → 1) or >= 1
+}
+```
+
+| Type | Spread | Bounded by `maxModelLen`? |
+|------|--------|---------------------------|
+| `constant` (default) | none — fixed `value = round(mean)` | n/a (deterministic) |
+| `exponential` | CoV fixed at 1 | no — **rejected at config load when `maxModelLen > 0`** |
+| `gaussian` | `std_dev = cov * mean` | yes (clamped) |
+| `lognormal` | `sigma = sqrt(ln(1+cov²))`, mean preserved | yes (clamped) |
+
+When `maxModelLen > 0`, the input and output caps **sum-split** `maxModelLen` by
+the mean ratio, so per-request `input + output <= maxModelLen` by construction.
+`exponential` is unclampable (its sampler ignores `min`/`max`) and is therefore
+rejected at config load when `maxModelLen > 0`; use `gaussian` or `lognormal`
+for bounded models. Omitting `tokenDist` yields a `constant` (fixed-length)
+workload.
+
+`min` is best-effort against each dimension's per-request cap: when a skewed
+input/output mean ratio shrinks a dimension's sum-split share below the
+configured `min`, the floor is capped at that share so the sampler always sees a
+coherent `[min, max]` band. The `input + output <= maxModelLen` guarantee always
+holds regardless.
 
 ### Where `totalKVBlocks` comes from
 
