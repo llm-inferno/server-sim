@@ -34,7 +34,10 @@ MoE models).
 The `Saturation` field is the **authoritative signal**. Metrics in a saturated response are
 left as-is by the evaluator:
 
-- **BLIS pre-sim** (DES was skipped): all latency metrics are zero by construction.
+- **BLIS pre-sim** (DES was skipped): latency metrics are populated with a large,
+  load-monotonic *saturated* latency derived from the decode-bandwidth model (not zero), so
+  the value is monotonic with load and renders distinctly from a "no data" dropout. See
+  `docs/blis-saturated-latency.md` (issue #40).
 - **Queue-analysis and BLIS post-sim**: metrics are populated with degraded-state values.
 - **vllm-server**: metrics reflect the measured degraded behaviour under the offered load.
 - **`MaxRPS`** is populated where it can be computed: BLIS derives it from the bandwidth

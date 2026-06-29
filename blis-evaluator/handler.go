@@ -82,12 +82,13 @@ func solveHandler(lookup map[string]modelEntry, backend string) gin.HandlerFunc 
 		// Pre-simulation saturation check: avoid running an expensive DES on
 		// workloads that analytically exceed server capacity. The check uses
 		// hardware and model parameters already loaded above and is independent
-		// of the configured latency backend.
-		if sat, maxRPS := checkSaturation(pd, modelConfig, hwConfig, entry); sat != "" {
-			c.IndentedJSON(http.StatusOK, evaluator.AnalysisData{
-				Saturation: sat,
-				MaxRPS:     maxRPS,
-			})
+		// of the configured latency backend. When saturated it returns a result
+		// pre-populated with a large, load-monotonic latency (not zeros) so the
+		// downstream dashboard renders saturation distinctly from a "no data"
+		// dropout — see docs/blis-saturated-latency.md (issue #40).
+		if sat, ad := checkSaturation(pd, modelConfig, hwConfig, entry); sat != "" {
+			ad.Saturation = sat
+			c.IndentedJSON(http.StatusOK, ad)
 			return
 		}
 
@@ -243,8 +244,10 @@ func effectiveMaxRunningReqs(pd evaluator.ProblemData, entry modelEntry) int64 {
 
 // checkSaturation performs an analytical pre-simulation overload check using
 // parameters already loaded in the handler. It returns the saturation reason
-// and a derived MaxRPS if the offered workload exceeds server capacity, or
-// ("", 0) if the workload appears sustainable.
+// and an AnalysisData pre-populated with the derived MaxRPS and a large,
+// load-monotonic saturated latency (see saturatedLatencyData) if the offered
+// workload exceeds server capacity, or ("", zero AnalysisData) if the workload
+// appears sustainable. The caller stamps the returned Saturation field.
 //
 // The model is batch-aware: a real vLLM server decodes a whole running batch per
 // forward pass, streaming the model weights once and reading the KV cache of every
@@ -269,7 +272,7 @@ func effectiveMaxRunningReqs(pd evaluator.ProblemData, entry modelEntry) int64 {
 // worst-case maxConcurrency*tokens KV occupancy; both were far too conservative
 // for batched serving (e.g. they vetoed Qwen2.5-14B/H100 at ~0.22 RPS). See
 // docs/saturation-detection.md and docs/blis-overload-detection.md.
-func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisSim.HardwareCalib, entry modelEntry) (saturation string, maxRPS float32) {
+func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisSim.HardwareCalib, entry modelEntry) (saturation string, ad evaluator.AnalysisData) {
 	tp := entry.TP
 	if tp <= 0 {
 		tp = 1
@@ -280,12 +283,26 @@ func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisS
 	totalKVSlots := float64(entry.TotalKVBlocks * entry.BlockSizeTokens)
 	batch := float64(effectiveMaxRunningReqs(pd, entry))
 
+	weightBytes := estimateWeightBytes(mc)
+	kvBytesPerToken := estimateKVBytesPerToken(mc)
+	bwBytesPerSec := hc.BwPeakTBs * float64(tp) * 1e12
+
 	// KV capacity limits the running batch. If a single average request's context
-	// does not fit, the workload is unservable (degenerate KV saturation).
+	// does not fit, the workload is unservable (degenerate KV saturation): no
+	// stable rate exists (MaxRPS=0), so we report the decode step at batch=1 with
+	// no overload factor — a large finite latency at real bandwidth, not a zero.
 	if totalKVSlots > 0 && avgContext > 0 {
 		bKV := totalKVSlots / avgContext
 		if bKV < 1.0 {
-			return evaluator.SaturationKV, 0
+			// Guard the same finite-bandwidth preconditions as the bandwidth branch
+			// so tStep stays finite (a zero/absent bandwidth would yield +Inf, which
+			// is not JSON-encodable); fall back to MaxRPS-only when they don't hold.
+			ad := evaluator.AnalysisData{}
+			if weightBytes > 0 && bwBytesPerSec > 0 {
+				tStep := decodeStep(weightBytes, kvBytesPerToken, bwBytesPerSec, 1.0, avgContext)
+				ad = saturatedLatencyData(tStep, outTokens, float64(pd.RPS), 0)
+			}
+			return evaluator.SaturationKV, ad
 		}
 		if bKV < batch {
 			batch = bKV
@@ -293,20 +310,59 @@ func checkSaturation(pd evaluator.ProblemData, mc *blisSim.ModelConfig, hc blisS
 	}
 
 	// Decode memory-bandwidth ceiling at the (KV-limited) running batch.
-	weightBytes := estimateWeightBytes(mc)
-	kvBytesPerToken := estimateKVBytesPerToken(mc)
-	bwBytesPerSec := hc.BwPeakTBs * float64(tp) * 1e12
 	if outTokens > 0 && weightBytes > 0 && bwBytesPerSec > 0 && batch > 0 {
 		// tStep > 0 is guaranteed: weightBytes > 0 and bwBytesPerSec > 0.
-		tStep := (weightBytes + batch*avgContext*kvBytesPerToken) / bwBytesPerSec
+		tStep := decodeStep(weightBytes, kvBytesPerToken, bwBytesPerSec, batch, avgContext)
 		decodeTPS := batch / tStep
 		demandTPS := float64(pd.RPS) * outTokens
 		if demandTPS > decodeTPS*saturationMargin {
-			return evaluator.SaturationBandwidth, float32(decodeTPS / outTokens)
+			maxRPS := float32(decodeTPS / outTokens)
+			return evaluator.SaturationBandwidth, saturatedLatencyData(tStep, outTokens, float64(pd.RPS), maxRPS)
 		}
 	}
 
-	return evaluator.SaturationNone, 0
+	return evaluator.SaturationNone, evaluator.AnalysisData{}
+}
+
+// decodeStep returns the decode step time (seconds) for a running batch: the
+// engine streams the model weights once and reads the KV of all `batch`
+// in-flight contexts (avgContext tokens each) per forward pass.
+func decodeStep(weightBytes, kvBytesPerToken, bwBytesPerSec, batch, avgContext float64) float64 {
+	return (weightBytes + batch*avgContext*kvBytesPerToken) / bwBytesPerSec
+}
+
+// saturatedLatencyData builds the latency fields reported for a saturated
+// pre-check result, so consumers see a large, load-monotonic latency instead of
+// a misleading zero (issue #40). Derivation and rationale: see
+// docs/blis-saturated-latency.md.
+//
+//	AvgITL      = tStep                      (per-token latency of the saturated batch)
+//	genMs       = outTokens × AvgITL         (in-service generation time)
+//	overload    = max(1, RPS / maxRPS)       (1 when maxRPS<=0; grows past the ceiling)
+//	AvgTTFT     = genMs × overload           (queueing-dominated; rises with load)
+//	AvgWaitTime = AvgTTFT
+//	AvgRespTime = AvgTTFT + genMs            (wait + generation; in-service = genMs)
+//	Throughput  = maxRPS                     (saturated goodput ceiling; <= RPS)
+func saturatedLatencyData(tStep, outTokens, offeredRPS float64, maxRPS float32) evaluator.AnalysisData {
+	itlMs := tStep * 1000.0
+	genMs := outTokens * itlMs
+
+	overload := 1.0
+	if maxRPS > 0 {
+		if r := offeredRPS / float64(maxRPS); r > 1.0 {
+			overload = r
+		}
+	}
+	ttftMs := genMs * overload
+
+	return evaluator.AnalysisData{
+		Throughput:  maxRPS,
+		AvgRespTime: float32(ttftMs + genMs),
+		AvgWaitTime: float32(ttftMs),
+		AvgTTFT:     float32(ttftMs),
+		AvgITL:      float32(itlMs),
+		MaxRPS:      maxRPS,
+	}
 }
 
 // estimateKVBytesPerToken returns the per-token KV cache size in bytes — keys and
