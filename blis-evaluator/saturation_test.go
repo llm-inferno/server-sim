@@ -134,13 +134,13 @@ func TestCheckSaturation_BandwidthSaturated(t *testing.T) {
 	pd := evaluator.ProblemData{RPS: 3.0, AvgInputTokens: 10, AvgOutputTokens: 1}
 	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
 
-	sat, maxRPS := checkSaturation(pd, &mc, loHWConfig(), entry)
+	sat, ad := checkSaturation(pd, &mc, loHWConfig(), entry)
 
 	if sat != evaluator.SaturationBandwidth {
 		t.Errorf("saturation = %q, want %q", sat, evaluator.SaturationBandwidth)
 	}
-	if maxRPS <= 0 {
-		t.Errorf("maxRPS = %v, want > 0 for bandwidth saturation", maxRPS)
+	if ad.MaxRPS <= 0 {
+		t.Errorf("maxRPS = %v, want > 0 for bandwidth saturation", ad.MaxRPS)
 	}
 }
 
@@ -162,12 +162,12 @@ func TestCheckSaturation_BandwidthSaturation_ReturnsPositiveMaxRPS(t *testing.T)
 	pd := evaluator.ProblemData{RPS: 3.0, AvgInputTokens: 10, AvgOutputTokens: 1}
 	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
 
-	_, maxRPS := checkSaturation(pd, &mc, loHWConfig(), entry)
+	_, ad := checkSaturation(pd, &mc, loHWConfig(), entry)
 
 	// maxRPS = decodeCapacityTPS / AvgOutputTokens = 2.118 / 1 ≈ 2.118
 	// should be roughly 2.0-3.0 for these params
-	if maxRPS <= 0 || maxRPS >= float32(pd.RPS) {
-		t.Errorf("maxRPS = %v; expected positive value below the offered RPS", maxRPS)
+	if ad.MaxRPS <= 0 || ad.MaxRPS >= float32(pd.RPS) {
+		t.Errorf("maxRPS = %v; expected positive value below the offered RPS", ad.MaxRPS)
 	}
 }
 
@@ -306,6 +306,125 @@ func TestCheckSaturation_JustAboveMarginIsSaturated(t *testing.T) {
 // checkSaturation — neither bottleneck active
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// saturatedLatencyData — reported latency under pre-check saturation (issue #40)
+// ---------------------------------------------------------------------------
+
+func approxEq(a, b, tol float32) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d <= tol
+}
+
+func TestSaturatedLatencyData_Formula(t *testing.T) {
+	// tStep=0.64s, outTokens=1, offeredRPS=3.0, maxRPS=1.5625
+	//   itlMs=640, genMs=640, overload=3/1.5625=1.92
+	//   ttft=1228.8, resp=1868.8, throughput=maxRPS=1.5625
+	ad := saturatedLatencyData(0.64, 1, 3.0, 1.5625)
+
+	if !approxEq(ad.AvgITL, 640, 0.1) {
+		t.Errorf("AvgITL = %v, want ~640", ad.AvgITL)
+	}
+	if !approxEq(ad.AvgTTFT, 1228.8, 0.1) {
+		t.Errorf("AvgTTFT = %v, want ~1228.8", ad.AvgTTFT)
+	}
+	if !approxEq(ad.AvgWaitTime, 1228.8, 0.1) {
+		t.Errorf("AvgWaitTime = %v, want ~1228.8", ad.AvgWaitTime)
+	}
+	if !approxEq(ad.AvgRespTime, 1868.8, 0.1) {
+		t.Errorf("AvgRespTime = %v, want ~1868.8", ad.AvgRespTime)
+	}
+	if !approxEq(ad.Throughput, 1.5625, 1e-4) || ad.Throughput != ad.MaxRPS {
+		t.Errorf("Throughput/MaxRPS = %v/%v, want ~1.5625 and equal", ad.Throughput, ad.MaxRPS)
+	}
+}
+
+func TestSaturatedLatencyData_InServiceTimeIsGenMs(t *testing.T) {
+	// RespTime - WaitTime must equal the generation time (outTokens × ITL) so the
+	// collector's Little's-Law occupancy stays physically sane.
+	ad := saturatedLatencyData(0.64, 4, 3.0, 1.5625)
+	inService := ad.AvgRespTime - ad.AvgWaitTime
+	genMs := 4 * ad.AvgITL
+	if !approxEq(inService, genMs, 0.1) {
+		t.Errorf("RespTime-WaitTime = %v, want genMs = %v", inService, genMs)
+	}
+}
+
+func TestSaturatedLatencyData_OverloadFloorIsOne(t *testing.T) {
+	// At/below the capacity ceiling (RPS <= maxRPS) the overload factor floors at
+	// 1, so TTFT = genMs (one generation time) rather than shrinking below it.
+	ad := saturatedLatencyData(0.64, 2, 1.0, 1.5625) // RPS < maxRPS
+	genMs := 2 * ad.AvgITL
+	if !approxEq(ad.AvgTTFT, genMs, 0.1) {
+		t.Errorf("AvgTTFT = %v, want genMs = %v (overload floored at 1)", ad.AvgTTFT, genMs)
+	}
+}
+
+func TestSaturatedLatencyData_ZeroMaxRPSUsesUnitOverload(t *testing.T) {
+	// KV-degenerate path: maxRPS=0 ⇒ overload=1, latency still non-zero.
+	ad := saturatedLatencyData(0.872, 10, 0.5, 0)
+	if ad.AvgITL <= 0 || ad.AvgTTFT <= 0 {
+		t.Errorf("KV-degenerate latency must be non-zero, got ITL=%v TTFT=%v", ad.AvgITL, ad.AvgTTFT)
+	}
+	genMs := 10 * ad.AvgITL
+	if !approxEq(ad.AvgTTFT, genMs, 0.1) {
+		t.Errorf("AvgTTFT = %v, want genMs = %v with maxRPS=0", ad.AvgTTFT, genMs)
+	}
+}
+
+func TestCheckSaturation_BandwidthSaturated_ReportsNonZeroLatency(t *testing.T) {
+	mc := tinyDenseModel()
+	pd := evaluator.ProblemData{RPS: 3.0, AvgInputTokens: 10, AvgOutputTokens: 1}
+	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
+
+	_, ad := checkSaturation(pd, &mc, loHWConfig(), entry)
+
+	if ad.AvgITL <= 0 || ad.AvgTTFT <= 0 || ad.AvgRespTime <= 0 || ad.AvgWaitTime <= 0 {
+		t.Errorf("saturated result must report non-zero latency, got %+v", ad)
+	}
+	if ad.Throughput <= 0 || ad.Throughput > pd.RPS {
+		t.Errorf("Throughput = %v, want (0, RPS] under saturation", ad.Throughput)
+	}
+}
+
+func TestCheckSaturation_TTFTMonotonicWithLoad_ITLFlat(t *testing.T) {
+	mc := tinyDenseModel()
+	entry := modelEntry{TP: 1, TotalKVBlocks: 10000, BlockSizeTokens: 16, MaxRunningReqs: 1}
+
+	_, lo := checkSaturation(evaluator.ProblemData{RPS: 3.0, AvgInputTokens: 10, AvgOutputTokens: 1}, &mc, loHWConfig(), entry)
+	_, hi := checkSaturation(evaluator.ProblemData{RPS: 5.0, AvgInputTokens: 10, AvgOutputTokens: 1}, &mc, loHWConfig(), entry)
+
+	if hi.AvgTTFT <= lo.AvgTTFT {
+		t.Errorf("TTFT should rise with load: RPS=3 gave %v, RPS=5 gave %v", lo.AvgTTFT, hi.AvgTTFT)
+	}
+	// ITL is the saturated batch's decode step time — independent of queued load.
+	if !approxEq(hi.AvgITL, lo.AvgITL, 0.1) {
+		t.Errorf("ITL should be flat with load: RPS=3 gave %v, RPS=5 gave %v", lo.AvgITL, hi.AvgITL)
+	}
+}
+
+func TestCheckSaturation_KVDegenerate_ReportsNonZeroLatency(t *testing.T) {
+	mc := tinyDenseModel()
+	// Degenerate KV saturation at finite (low) bandwidth: totalKVSlots = 1*16 = 16;
+	// avgContext = 20 + 10/2 = 25 > 16 → B_kv < 1. tStep at batch=1 is large.
+	pd := evaluator.ProblemData{RPS: 0.001, AvgInputTokens: 20, AvgOutputTokens: 10}
+	entry := modelEntry{TP: 1, TotalKVBlocks: 1, BlockSizeTokens: 16, MaxRunningReqs: 10}
+
+	sat, ad := checkSaturation(pd, &mc, loHWConfig(), entry)
+
+	if sat != evaluator.SaturationKV {
+		t.Fatalf("saturation = %q, want %q", sat, evaluator.SaturationKV)
+	}
+	if ad.AvgITL <= 0 || ad.AvgTTFT <= 0 {
+		t.Errorf("KV-degenerate result must report non-zero latency, got ITL=%v TTFT=%v", ad.AvgITL, ad.AvgTTFT)
+	}
+	if ad.MaxRPS != 0 {
+		t.Errorf("MaxRPS = %v, want 0 (no stable rate) for degenerate KV saturation", ad.MaxRPS)
+	}
+}
+
 func TestCheckSaturation_NeitherBottleneck(t *testing.T) {
 	mc := tinyDenseModel()
 	pd := evaluator.ProblemData{RPS: 0.001, AvgInputTokens: 1, AvgOutputTokens: 1}
@@ -313,12 +432,12 @@ func TestCheckSaturation_NeitherBottleneck(t *testing.T) {
 		TP: 1, TotalKVBlocks: 100000, BlockSizeTokens: 16, MaxRunningReqs: 1,
 	}
 
-	sat, maxRPS := checkSaturation(pd, &mc, hiHWConfig(), entry)
+	sat, ad := checkSaturation(pd, &mc, hiHWConfig(), entry)
 
 	if sat != evaluator.SaturationNone {
 		t.Errorf("well under capacity: saturation = %q, want none", sat)
 	}
-	if maxRPS != 0 {
-		t.Errorf("maxRPS = %v, want 0 when not saturated", maxRPS)
+	if ad.MaxRPS != 0 {
+		t.Errorf("maxRPS = %v, want 0 when not saturated", ad.MaxRPS)
 	}
 }
