@@ -208,6 +208,25 @@
       "numRequests": 0,
       "seed": 42,
       "tokenDist": { "type": "exponential" }
+    },
+    {
+      "accelerator": "H100",
+      "model": "Qwen/Qwen3-32B",
+      "hfConfigPath": "hf-configs/Qwen/Qwen3-32B/config.json",
+      "gpu": "H100",
+      "tp": 2,
+      "totalKVBlocks": 20000,
+      "blockSizeTokens": 16,
+      "maxRunningReqs": 128,
+      "maxScheduledTokens": 8192,
+      "maxModelLen": 8192,
+      "scheduler": "fcfs",
+      "betaCoeffs": [0.15, 0.0, 1.4, 0.75, 32.0, 4.0, 126.0, 482.0, 0.0, 1.9],
+      "alphaCoeffs": [15563.0, 777.0, 46.0],
+      "simulationHorizon": 300000000,
+      "numRequests": 0,
+      "seed": 42,
+      "tokenDist": { "type": "gaussian", "cov": 0.5, "min": 1 }
     }
   ]
 }
